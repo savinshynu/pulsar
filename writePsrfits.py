@@ -40,18 +40,19 @@ Options:
 def parseOptions(args):
 	config = {}
 	# Command line flags - default values
-	config['LFFT'] = 4096
 	config['output'] = None
         config['window'] = fxc.noWindow
         config['verbose'] = True
 	config['args'] = []
+        config['nchan'] = 4096
+        config['source'] = "None"
         config['sumpolarizations'] = True
         config['ra'] = "00:00:00.0"
         config['dec'] = "00:00:00.0"
 
 	# Read in and process the command line flags
 	try:
-	  opts, args = getopt.getopt(args, "hs:lo", ["help", "sum","fft-length=", "output=","ra=","dec="])
+	  opts, args = getopt.getopt(args, "hs:lo", ["help", "sum", "nchan=", "source=", "output=","ra=","dec="])
         except getopt.GetoptError, err:
 		# Print help information and exit:
 		print str(err) # will print something like "option -a not recognized"
@@ -61,8 +62,10 @@ def parseOptions(args):
 	for opt, value in opts:
 		if opt in ('-h', '--help'):
 			usage(exitCode=0)
-		elif opt in ('-l', '--fft-length'):
-			config['LFFT'] = int(value)
+		elif opt in ('--nchan'):
+			config['nchan'] = int(value)
+		elif opt in ('--source'):
+			config['source'] = value
                 elif opt in ('--ra'):
                         config['ra'] = value
                 elif opt in ('--dec'):
@@ -112,7 +115,6 @@ def main(args):
 	config = parseOptions(args)
 
 	# Length of the FFT
-	LFFT = config['LFFT']
 
 	fh = open(config['args'][0], "rb")
 	nFramesFile = os.path.getsize(config['args'][0]) / drx.FrameSize
@@ -170,29 +172,12 @@ def main(args):
         numout=0
         sumpolarizations=config['sumpolarizations']
         numframesatatime=4096
-        nchan = 4096
-        nsblk = 4096
-        
-	# Date
-	beginDate = ephem.Date(astro.unix_to_utcjd(junkFrame.getTime()) - astro.DJD_OFFSET)
-        mjd = astro.jd_to_mjd(astro.unix_to_utcjd(junkFrame.getTime()))
-        mjd_day = int(mjd)
-        mjd_sec = (mjd-mjd_day)*86400
-        prefix = "drx_%05d_%05d" % (mjd_day,int(mjd_sec))
-
-#        sys.exit(0)
-        if skippedsome==1:
-          print "Skipped %d frames" % count
-          nFramesFile = (os.path.getsize(config['args'][0])-drx.FrameSize*count) / drx.FrameSize
-        beampols = tunepol
-        framespertunpol = nFramesFile/beampols
-        jumpnumframes=0
-        numout=0
-        sumpolarizations=config['sumpolarizations']
-        numframesatatime=4096
-        nchan = 4096
-        nsblk = 4096
-        
+        nchan = config['nchan']
+        source = config['source']
+        framesperfft=nchan/numframesatatime
+        print framesperfft
+        ptsperframe = 4096
+        nsblk=4096/framesperfft
 	# Date
 	beginDate = ephem.Date(astro.unix_to_utcjd(junkFrame.getTime()) - astro.DJD_OFFSET)
         mjd = astro.jd_to_mjd(astro.unix_to_utcjd(junkFrame.getTime()))
@@ -203,17 +188,19 @@ def main(args):
 	# File summary
 	print "Input Filename: %s" % config['args'][0]
 	print "Date of First Frame: %s %f" % (str(beginDate),mjd)
-	print "Beams: %i" % beams
+	begintime=beginDate.datetime()
+        print str(begintime.strftime("%Y-%m-%dT%H:%M:%S"))
+        print "Beams: %i" % beams
 	print "Tune/Pols: %i %i %i %i" % tunepols
         print "beampols: %i" % beampols
 	print "Sample Rate: %i Hz" % srate
-	print "Sample Time: %f s" % (4096.0/srate)
+	print "Sample Time: %f s" % (float(ptsperframe)/srate)
         if numout==0:
           numout=nFramesFile
-        print "Frames: %i (%.3f s)" % (numout, 1.0 * numout * 4096 / srate / beampols)
+        print "Frames: %i (%.3f s)" % (numout, 1.0 * numout * ptsperframe / srate / beampols)
         print "Number of frames/tune/pol: %d " % (framespertunpol)
 	print "---"
-        mjd=mjd+(jumpnumframes * 4096 / srate / beampols) / 86400
+        mjd=mjd+(jumpnumframes * ptsperframe / srate / beampols) / 86400
         print "mjd=%f" % mjd
         pfu_out = []
 	# Master loop over all of the file chunks
@@ -226,10 +213,10 @@ def main(args):
 #	masterSpectra = numpy.zeros((nChunks, beampols, LFFT-1))
 
 #        data = numpy.zeros((beampols,4096/beampols), dtype=numpy.csingle)
-        allzeros=numpy.zeros(4096)
-        allones=numpy.ones(4096)
-        data1 = numpy.zeros((beampols,numframesatatime,4096),dtype=numpy.csingle)
-        kk=0
+        allzeros=numpy.zeros(nchan)
+        allones=numpy.ones(nchan)
+        data1 = numpy.zeros((beampols,numframesatatime/framesperfft,nchan),dtype=numpy.csingle)
+        kk=0 #i is current frame for a particular tunepol
         for i in range(framespertunpol):
             sys.stdout.write("%d/%d\r" % (i,framespertunpol))
             if i>=jumpnumframes and i<jumpnumframes+numout:
@@ -255,7 +242,7 @@ def main(args):
                   pfo.filenum = 0
                   pfo.tot_rows = pfo.N = pfo.T = pfo.status = pfo.multifile = 0;
                   pfo.rows_per_file=4096;
-                  pfo.hdr.df = srate/1000000.0/4096.0
+                  pfo.hdr.df = srate/1000000.0/nchan
                   print pfo.hdr.df
                   try:
                     centralfreq=cFrame.getCentralFreq()
@@ -265,9 +252,12 @@ def main(args):
                   pfo.hdr.fctr=centralfreq/1000000
                   pfo.hdr.BW = srate/1000000
                   pfo.hdr.nchan = nchan
+                  pfo.hdr.observer = "None"
+                  pfo.hdr.source = source
+                  pfo.hdr.fd_hand = 1
                   pfo.hdr.nbits = 8
                   pfo.hdr.nsblk = nsblk
-                  pfo.hdr.dt = (4096/srate)
+                  pfo.hdr.dt = (nchan/srate)
                   pfo.hdr.ds_freq_fact=1
                   pfo.hdr.ds_time_fact=1
                   if sumpolarizations == True:
@@ -278,17 +268,22 @@ def main(args):
                     pfo.hdr.summed_polns=0
                   pfo.hdr.obs_mode="SEARCH"
                   pfo.hdr.telescope="LWA"
+                  pfo.hdr.frontend="LWA"
+                  pfo.hdr.backend="DRX"
+                  pfo.hdr.project_id="Pulsar"
                   pfo.hdr.ra_str=config['ra']
                   pfo.hdr.dec_str=config['dec']
+                  pfo.hdr.poln_type="LIN"
+                  pfo.hdr.date_obs=str(begintime.strftime("%Y-%m-%dT%H:%M:%S"))     
                   pfo.hdr.MJD_epoch=pfu.get_ld(mjd);
                   if sumpolarizations == True:
                     pfo.sub.bytes_per_subint=pfo.hdr.nchan*pfo.hdr.nsblk*pfo.hdr.nbits/8
                   else:
                     pfo.sub.bytes_per_subint=pfo.hdr.nchan*pfo.hdr.nsblk*pfo.hdr.nbits/8*pfo.hdr.npol
-                  pfo.sub.dat_freqs=pfu.malloc_floatp(4096*4)
-                  pfo.sub.dat_weights=pfu.malloc_floatp(4096*4)
-                  pfo.sub.dat_offsets=pfu.malloc_floatp(4096*4)
-                  pfo.sub.dat_scales=pfu.malloc_floatp(4096*4)
+                  pfo.sub.dat_freqs=pfu.malloc_floatp(pfo.hdr.nchan*4)
+                  pfo.sub.dat_weights=pfu.malloc_floatp(pfo.hdr.nchan*4)
+                  pfo.sub.dat_offsets=pfu.malloc_floatp(pfo.hdr.nchan*4)
+                  pfo.sub.dat_scales=pfu.malloc_floatp(pfo.hdr.nchan*4)
                   pfo.sub.rawdata=pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.nsblk)
                   if sumpolarizations == False or j%2 == 0:
                     pfu.psrfits_create(pfo)
@@ -299,28 +294,38 @@ def main(args):
                   firstpass.append(True)
                 else:
                   aStand = standMapper.index(aStand)
-	        data1[j,kk,0:4096] = cFrame.data.iq
+                if kk%framesperfft==0:
+                  #print "%d,%d,%d:%d" % (j,kk/framesperfft,0,ptsperframe)
+	          data1[j,kk/framesperfft,0:ptsperframe] = cFrame.data.iq
+                else:
+                  #print "%d,%d,%d:%d" % (j,kk/framesperfft,ptsperframe*(kk%framesperfft),ptsperframe*(kk%framesperfft+1))
+                  data1[j,kk/framesperfft,ptsperframe*(kk%framesperfft):ptsperframe*(kk%framesperfft+1)] = cFrame.data.iq
+                #print kk
                 if kk==numframesatatime-1:
-	          freq, tempSpec = fxc.SpecMaster(data1[j], LFFT=LFFT, window=config['window'], verbose=config['verbose'], SampleRate=srate, CentralFreq=(pfu_out[aStand].hdr.fctr*1000000))
+                  #print kk
+	          freq, tempSpec = fxc.SpecMaster(data1[j], LFFT=nchan, window=config['window'], verbose=config['verbose'], SampleRate=srate, CentralFreq=(pfu_out[aStand].hdr.fctr*1000000))
                   if firstpass[aStand] == True:
                     if sumpolarizations == False or j%2 == 0:
-                      for freqchan in range(0,4095):
+                      #print 'Here'
+                      for freqchan in range(0,nchan-1):
                         if freqchan==0:
                           freq[freqchan]=pfu_out[aStand].hdr.fctr-pfu_out[aStand].hdr.BW/2.0+pfu_out[aStand].hdr.df
 #                        freq[freqchan]=numpy.float32(freq[freqchan]/1000000)
                         else:
                           freq[freqchan]=freq[freqchan-1]+pfu_out[aStand].hdr.df
 #                        freq[freqchan]=(freqchan+1)*pfu_out[aStand].hdr.df+pfu_out[aStand].hdr.fctr-pfu_out[aStand].hdr.BW/2.0
-                      pfu.convert2_float_array(pfu_out[aStand].sub.dat_freqs,freq,4096)
-                      pfu.set_float_value(pfu_out[aStand].sub.dat_freqs,4095,freq[4094]+freq[4094]-freq[4093])
-                      pfu.convert2_float_array(pfu_out[aStand].sub.dat_weights,allones,4096)
-                      pfu.set_float_value(pfu_out[aStand].sub.dat_weights,4095,0)
-                      pfu.convert2_float_array(pfu_out[aStand].sub.dat_offsets,allzeros,4096)
-                      pfu.convert2_float_array(pfu_out[aStand].sub.dat_scales,allones,4096)
+                      #print kk
+                      pfu.convert2_float_array(pfu_out[aStand].sub.dat_freqs,freq,nchan)
+                      pfu.set_float_value(pfu_out[aStand].sub.dat_freqs,nchan-1,freq[nchan-2]+freq[nchan-2]-freq[nchan-3])
+                      pfu.convert2_float_array(pfu_out[aStand].sub.dat_weights,allones,nchan)
+                      pfu.set_float_value(pfu_out[aStand].sub.dat_weights,nchan-1,0)
+                      pfu.convert2_float_array(pfu_out[aStand].sub.dat_offsets,allzeros,nchan)
+                      pfu.convert2_float_array(pfu_out[aStand].sub.dat_scales,allones,nchan)
                       firstpass[aStand]=False
-                  for k in range(0,numframesatatime):
+                  for k in range(0,numframesatatime/framesperfft):
+                    #print 'Here'
                     pfu_points[aStand]+=1
-                    subintdata[aStand][(pfu_points[aStand]%pfo.hdr.nsblk)*4096:(pfu_points[aStand]%pfo.hdr.nsblk)*4096+4095]=tempSpec[k][0:4095]
+                    subintdata[aStand][(pfu_points[aStand]%pfo.hdr.nsblk)*nchan:(pfu_points[aStand]%pfo.hdr.nsblk)*nchan+nchan-1]=tempSpec[k][0:nchan-1]
                   if sumpolarizations == True:
                     if j%2 == 0:
                       continue
