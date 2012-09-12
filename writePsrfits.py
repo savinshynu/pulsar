@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-"""Given a DRX file, plot the time averaged spectra for each beam output."""
+"""
+Given a DRX file, create one of more PSRFITS file(s).
+"""
 
 import os
 import sys
@@ -17,16 +19,16 @@ import lsl.correlator.fx as fxc
 import lsl.astro as astro
 
 def usage(exitCode=None):
-	print """drxSpectra.py - Read in DRX files and create a collection of 
-time-averaged spectra.
+	print """writePrsfits.py - Read in DRX files and create one or more PSRFITS file(s).
 
-Usage: drxSpectra.py [OPTIONS] file
+Usage: writePsrfits.py [OPTIONS] file
 
 Options:
 -h, --help                  Display this help information
--l, --fft-length            Set FFT length (default = 4096)
 -o, --output                Output file basename
 -s, --sum                   Sum the 2 polarizations for a particular beam/tune
+-c, --nchan                 Set FFT length (default = 4096)
+-n, --source                Source name
 --ra                        Right Ascension
 --dec                       Declination
 """
@@ -52,8 +54,8 @@ def parseOptions(args):
 
 	# Read in and process the command line flags
 	try:
-	  opts, args = getopt.getopt(args, "hs:lo", ["help", "sum", "nchan=", "source=", "output=","ra=","dec="])
-        except getopt.GetoptError, err:
+		opts, args = getopt.getopt(args, "hsc:n:o:", ["help", "sum", "nchan=", "source=", "output=", "ra=", "dec="])
+	except getopt.GetoptError, err:
 		# Print help information and exit:
 		print str(err) # will print something like "option -a not recognized"
 		usage(exitCode=2)
@@ -62,16 +64,16 @@ def parseOptions(args):
 	for opt, value in opts:
 		if opt in ('-h', '--help'):
 			usage(exitCode=0)
-		elif opt in ('--nchan'):
+		elif opt in ('-c', '--nchan'):
 			config['nchan'] = int(value)
-		elif opt in ('--source'):
+		elif opt in ('-n', '--source'):
 			config['source'] = value
-                elif opt in ('--ra'):
-                        config['ra'] = value
-                elif opt in ('--dec'):
-                        config['dec'] = value
-                elif opt in ('-s', '--sum'):
-                        config['sumpolarizations'] = True
+		elif opt in ('--ra'):
+			config['ra'] = value
+		elif opt in ('--dec'):
+			config['dec'] = value
+		elif opt in ('-s', '--sum'):
+			config['sumpolarizations'] = True
 		elif opt in ('-o', '--output'):
 			config['output'] = value
 		else:
@@ -119,9 +121,15 @@ def main(args):
 	fh = open(config['args'][0], "rb")
 	nFramesFile = os.path.getsize(config['args'][0]) / drx.FrameSize
         print "FrameSize=%d" % drx.FrameSize
-	junkFrame = drx.readFrame(fh)
+	while True:
+		try:
+			junkFrame = drx.readFrame(fh)
+			srate = junkFrame.getSampleRate()
+			break
+		except ZeroDivisionError:
+			pass
+	fh.seek(-drx.FrameSize, 1)
 	
-	fh.seek(0)
 	srate = junkFrame.getSampleRate()
 	beams = drx.getBeamCount(fh)
 	tunepols = drx.getFramesPerObs(fh)
