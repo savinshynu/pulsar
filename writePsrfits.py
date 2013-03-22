@@ -150,7 +150,8 @@ def main(args):
         beam1,tune1,pol1 = junkFrame.parseID()
 	print "Beam/Tune/Pols: %i %i %i" % (beam1,tune1,pol1)
         tune=tune1
-        while tune==tune1:
+        pol=pol1
+        while tune==tune1 and pol==pol1:
           junkFrame = drx.readFrame(fh)
           beam,tune,pol = junkFrame.parseID()
           count+=1
@@ -311,7 +312,7 @@ def main(args):
                 #print kk
                 if kk==numframesatatime-1:
                   #print kk
-	          freq, tempSpec = fxc.SpecMaster(data1[j], LFFT=nchan, window=config['window'], verbose=config['verbose'], SampleRate=srate, CentralFreq=(pfu_out[aStand].hdr.fctr*1000000))
+                  freq, tempSpec = fxc.SpecMaster(data1[j], LFFT=nchan, window=config['window'], verbose=config['verbose'], SampleRate=srate, CentralFreq=(pfu_out[aStand].hdr.fctr*1000000))
                   if firstpass[aStand] == True:
                     if sumpolarizations == False or j%2 == 0:
                       #print 'Here'
