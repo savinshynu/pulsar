@@ -167,7 +167,7 @@ static PyObject *SumPolsWithOverflow(PyObject *self, PyObject *args, PyObject *k
 		return NULL;
 	}
 	if( index0 == index1 ) {
-		PyErr_Foramt(PyExc_ValueError, "index1 cannot equal index0");
+		PyErr_Format(PyExc_ValueError, "index1 cannot equal index0");
 		Py_XDECREF(data);
 		return NULL;
 	}
