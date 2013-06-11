@@ -23,7 +23,7 @@ import lsl.reader.errors as errors
 import lsl.astro as astro
 import lsl.common.progress as progress
 
-from _psr import PulsarEngine
+from _psr import PulsarEngine, SumPolsWithOverflow
 
 
 def usage(exitCode=None):
@@ -345,8 +345,8 @@ def main(args):
 		data = PulsarEngine(data, LFFT)
 		
 		if config['sumPols']:
-			data1 = data[0,:] + data[1,:]
-			data2 = data[2,:] + data[3,:]
+			data1 = SumPolsWithOverflow(data, 0, 1)
+			data2 = SumPolsWithOverflow(data, 2, 3)
 		else:
 			data1 = data[0,:]
 			data2 = data[1,:]
