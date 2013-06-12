@@ -2,10 +2,8 @@
 #include <math.h>
 #include <stdio.h>
 #ifdef _MKL
-	#include "mkl_cblas.h"
 	#include "fftw3.h"
 #else
-	#include <cblas.h>
 	#include <fftw3.h>
 #endif
 #include <stdlib.h>
