@@ -3,7 +3,7 @@ CFLAGS = $(shell python-config --cflags) $(shell python -c "import numpy; print 
 LDFLAGS = $(shell python-config --ldflags) $(shell pkg-config --libs fftw3)
 
 _psr.so: psr.o
-	$(CC) $(LDFLAGS) -o _psr.so psr.o -lm -shared -fopenmp
+	$(CC) -o _psr.so psr.o -lm -shared -fopenmp $(LDFLAGS)
 	
 psr.o:
 	$(CC) -c $(CFLAGS) -fPIC -o psr.o psr.c -funroll-loops -O3 -fopenmp
