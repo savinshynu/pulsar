@@ -4,9 +4,9 @@
 """
 Given a DR spectrometer file, create one of more PSRFITS file(s).
 
-$Rev: 1317 $
-$LastChangedBy: jdowell $
-$LastChangedDate: 2013-06-11 14:04:15 -0600 (Tue, 11 Jun 2013) $
+$Rev$
+$LastChangedBy$
+$LastChangedDate$
 """
 
 import os
