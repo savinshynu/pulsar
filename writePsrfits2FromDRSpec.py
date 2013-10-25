@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
-Given a DRX file, create one of more PSRFITS file(s).
+Given a DR spectrometer file, create one of more PSRFITS file(s).
 
-$Rev$
-$LastChangedBy$
-$LastChangedDate$
+$Rev: 1317 $
+$LastChangedBy: jdowell $
+$LastChangedDate: 2013-06-11 14:04:15 -0600 (Tue, 11 Jun 2013) $
 """
 
 import os
@@ -18,28 +18,26 @@ import getopt
 
 import psrfits_utils.psrfits_utils as pfu
 
-import lsl.reader.drx as drx
+import lsl.reader.drspec as drspec
 import lsl.reader.errors as errors
 import lsl.astro as astro
 import lsl.common.progress as progress
-from lsl.common.dp import fS
+from lsl.statistics import robust, kurtosis
 
 from _psr import *
 
 
 def usage(exitCode=None):
-	print """writePrsfits2.py - Read in DRX files and create one or more PSRFITS file(s).
+	print """writePrsfits2FromDRSpec.py - Read in DR spectrometer files and create one or 
+more PSRFITS file(s).
 
-Usage: writePsrfits2.py [OPTIONS] file
+Usage: writePsrfits2FromDRSpec.py [OPTIONS] file
 
 Options:
 -h, --help                  Display this help information
 -o, --output                Output file basename
--c, --nchan                 Set FFT length (default = 4096)
 -p, --no-sk-flagging        Disable on-the-fly SK flagging of RFI
--n, --no-summing            Do not sum polarizations
--i, --circularize           Convert data to RR/LL
--k, --stokes                Convert data to full Stokes
+-n, --no-summing            Do not sum polarizations for XX and YY files
 -s, --source                Source name
 -r, --ra                    Right Ascension (HH:MM:SS.SS, J2000)
 -d, --dec                   Declination (sDD:MM:SS.S, J2000)
@@ -47,7 +45,7 @@ Options:
 Note:  If a source name is provided and the RA or declination is not, the script
        will attempt to determine these values.
        
-Note:  Setting -i/--circularize or -k/--stokes disables polarization summing
+Note:  Stokes-mode data will disable summing
 """
 
 	if exitCode is not None:
@@ -61,18 +59,15 @@ def parseOptions(args):
 	# Command line flags - default values
 	config['output'] = None
 	config['args'] = []
-	config['nchan'] = 4096
 	config['useSK'] = True
 	config['sumPols'] = True
-	config['circularize'] = False
-	config['stokes'] = False
 	config['source'] = None
 	config['ra'] = None
 	config['dec'] = None
 	
 	# Read in and process the command line flags
 	try:
-		opts, args = getopt.getopt(args, "hc:pniks:o:r:d:", ["help", "nchan=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec="])
+		opts, args = getopt.getopt(args, "hpns:o:r:d:", ["help", "no-sk-flagging", "no-summing", "source=", "output=", "ra=", "dec="])
 	except getopt.GetoptError, err:
 		# Print help information and exit:
 		print str(err) # will print something like "option -a not recognized"
@@ -82,19 +77,10 @@ def parseOptions(args):
 	for opt, value in opts:
 		if opt in ('-h', '--help'):
 			usage(exitCode=0)
-		elif opt in ('-c', '--nchan'):
-			config['nchan'] = int(value)
 		elif opt in ('-p', '--no-sk-flagging'):
 			config['useSK'] = False
 		elif opt in ('-n', '--no-summing'):
 			config['sumPols'] = False
-		elif opt in ('-i', '--circularize'):
-			config['sumPols'] = False
-			config['circularize'] = True
-		elif opt in ('-k', '--stokes'):
-			config['stokes'] = True
-			config['sumPols'] = False
-			config['circularize'] = False
 		elif opt in ('-s', '--source'):
 			config['source'] = value
 		elif opt in ('-r', '--ra'):
@@ -165,42 +151,22 @@ def main(args):
 	if config['dec'] is None:
 		config['dec'] = "+00:00:00.0"
 		
-	# FFT length
-	LFFT = config['nchan']
-	
 	fh = open(config['args'][0], "rb")
-	nFramesFile = os.path.getsize(config['args'][0]) / drx.FrameSize
+	drspec.FrameSize = drspec.getFrameSize(fh)
+	nFramesFile = os.path.getsize(config['args'][0]) / drspec.FrameSize
+	LFFT = drspec.getTransformSize(fh)
 	
-	# Find the good data (non-zero decimation)
-	while True:
-		try:
-			junkFrame = drx.readFrame(fh)
-			srate = junkFrame.getSampleRate()
-			break
-		except ZeroDivisionError:
-			pass
-	fh.seek(-drx.FrameSize, 1)
-	
-	# Line up the time tags for the various tunings/polarizations
-	timeTags = []
-	for i in xrange(16):
-		junkFrame = drx.readFrame(fh)
-		timeTags.append(junkFrame.data.timeTag)
-	fh.seek(-16*drx.FrameSize, 1)
-	
-	i = 0
-	while (timeTags[i+0] != timeTags[i+1]) or (timeTags[i+0] != timeTags[i+2]) or (timeTags[i+0] != timeTags[i+3]):
-		i += 1
-		fh.seek(drx.FrameSize, 1)
-		
 	# Load in basic information about the data
-	junkFrame = drx.readFrame(fh)
-	fh.seek(-drx.FrameSize, 1)
+	junkFrame = drspec.readFrame(fh)
+	fh.seek(-drspec.FrameSize, 1)
 	## What's in the data?
 	srate = junkFrame.getSampleRate()
-	beams = drx.getBeamCount(fh)
-	tunepols = drx.getFramesPerObs(fh)
-	tunepol = tunepols[0] + tunepols[1] + tunepols[2] + tunepols[3]
+	beam = junkFrame.parseID()
+	centralFreq1 = junkFrame.getCentralFreq(1)
+	centralFreq2 = junkFrame.getCentralFreq(2)
+	srate = junkFrame.getSampleRate()
+	dataProducts = junkFrame.getDataProducts()
+	tInt = junkFrame.header.nInts*LFFT/srate
 	
 	## Date
 	beginDate = ephem.Date(astro.unix_to_utcjd(junkFrame.getTime()) - astro.DJD_OFFSET)
@@ -209,61 +175,45 @@ def main(args):
 	mjd_day = int(mjd)
 	mjd_sec = (mjd-mjd_day)*86400
 	if config['output'] is None:
-		config['output'] = "drx_%05d_%05d" % (mjd_day, int(mjd_sec))
+		config['output'] = "drspec_%05d_%05d" % (mjd_day, int(mjd_sec))
 		
-	## Tuning frequencies and initial time tags
-	ttStep = int(fS / srate * 4096)
-	ttFlow = [0, 0, 0, 0]
-	for i in xrange(4):
-		junkFrame = drx.readFrame(fh)
-		beam,tune,pol = junkFrame.parseID()
-		aStand = 2*(tune-1) + pol
-		ttFlow[aStand] = junkFrame.data.timeTag - ttStep
-		
-		if tune == 1:
-			centralFreq1 = junkFrame.getCentralFreq()
-		else:
-			centralFreq2 = junkFrame.getCentralFreq()
-	fh.seek(-4*drx.FrameSize, 1)
-	
 	# File summary
 	print "Input Filename: %s" % config['args'][0]
 	print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
-	print "Beams: %i" % beams
-	print "Tune/Pols: %i %i %i %i" % tunepols
+	print "Beam: %i" % beam
 	print "Tunings: %.1f Hz, %.1f Hz" % (centralFreq1, centralFreq2)
 	print "Sample Rate: %i Hz" % srate
-	print "Sample Time: %f s" % (LFFT/srate,)
-	print "Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol)
+	print "Sample Time: %f s" % tInt
+	print "Data Products: %s" % ','.join(dataProducts)
+	print "Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile)
 	print "---"
 	
 	# Create the output PSRFITS file(s)
 	pfu_out = []
-	nsblk = 4096
-	if config['sumPols']:
+	nsblk = 32
+	if junkFrame.containsLinearData() and config['sumPols']:
 		polNames = 'I'
 		nPols = 1
-		reduceEngine = CombineToIntensity
-	elif config['stokes']:
-		polNames = 'IQUV'
-		nPols = 4
-		reduceEngine = CombineToStokes
-	elif config['circularize']:
-		polNames = 'LLRR'
-		nPols = 2
-		reduceEngine = CombineToCircular
+		def reduceEngine(x):
+			y = numpy.zeros((2,x.shape[1]), dtype=numpy.float64)
+			y[0,:] += x[0,:]
+			y[0,:] += x[1,:]
+			y[1,:] += x[2,:]
+			y[1,:] += x[3,:]
+			return y
 	else:
-		polNames = 'XXYY'
-		nPols = 2
-		reduceEngine = CombineToLinear
-			
+		config['sumPols'] = False
+		polNames = ''.join(dataProducts)
+		nPols = len(dataProducts)
+		reduceEngine = lambda x: x
+		
 	for t in xrange(1, 2+1):
 		## Basic structure and bounds
 		pfo = pfu.psrfits()
 		pfo.basefilename = "%s_b%it%i" % (config['output'], beam, t)
 		pfo.filenum = 0
 		pfo.tot_rows = pfo.N = pfo.T = pfo.status = pfo.multifile = 0
-		pfo.rows_per_file = 8192
+		pfo.rows_per_file = 32768
 		
 		## Frequency, bandwidth, and channels
 		if t == 1:
@@ -273,10 +223,10 @@ def main(args):
 		pfo.hdr.BW = srate/1e6
 		pfo.hdr.nchan = LFFT
 		pfo.hdr.df = srate/1e6/LFFT
-		pfo.hdr.dt = LFFT / srate
+		pfo.hdr.dt = tInt
 		
 		## Metadata about the observation/observatory/pulsar
-		pfo.hdr.observer = "writePsrfits2.py"
+		pfo.hdr.observer = "wP2FromDRSpec.py"
 		pfo.hdr.source = config['source']
 		pfo.hdr.fd_hand = 1
 		pfo.hdr.nbits = 8
@@ -288,11 +238,11 @@ def main(args):
 		pfo.hdr.obs_mode = "SEARCH"
 		pfo.hdr.telescope = "LWA"
 		pfo.hdr.frontend = "LWA"
-		pfo.hdr.backend = "DRX"
+		pfo.hdr.backend = "DRSpectrometer"
 		pfo.hdr.project_id = "Pulsar"
 		pfo.hdr.ra_str = config['ra']
 		pfo.hdr.dec_str = config['dec']
-		pfo.hdr.poln_type = "LIN" if not config['circularize'] else "CIRC"
+		pfo.hdr.poln_type = "LIN"
 		pfo.hdr.poln_order = polNames
 		pfo.hdr.date_obs = str(beginTime.strftime("%Y-%m-%dT%H:%M:%S"))     
 		pfo.hdr.MJD_epoch = pfu.get_ld(mjd)
@@ -326,15 +276,16 @@ def main(args):
 		pfu.convert2_float_array(pfu_out[i].sub.dat_scales,  numpy.ones(LFFT*nPols),  LFFT*nPols)
 		
 	# Speed things along, the data need to be processed in units of 'nsblk'.  
-	# Find out how many frames per tuning/polarization that corresponds to.
-	chunkSize = nsblk*LFFT/4096
+	# Find out how many frames that corresponds to.
+	chunkSize = nsblk
 	
 	# Calculate the SK limites for weighting
-	if config['useSK']:
+	if config['useSK'] and junkFrame.containsLinearData():
 		from lsl.statistics import kurtosis
-		skLimits = kurtosis.getLimits(4.0, 1.0*nsblk)
+		skN = int(tInt*srate / LFFT)
+		skLimits = kurtosis.getLimits(4.0, M=1.0*nsblk, N=1.0*skN)
 		
-		GenerateMask = lambda x: ComputeSKMask(x, skLimits[0], skLimits[1])
+		GenerateMask = lambda x: ComputePseudoSKMask(x, LFFT, skN, skLimits[0], skLimits[1])
 	else:
 		def GenerateMask(x):
 			flag = numpy.ones((4, LFFT), dtype=numpy.float32)
@@ -344,34 +295,37 @@ def main(args):
 			
 	# Create the progress bar so that we can keep up with the conversion.
 	try:
-		pbar = progress.ProgressBarPlus(max=nFramesFile/(4*chunkSize), span=55)
+		pbar = progress.ProgressBarPlus(max=nFramesFile/chunkSize, span=55)
 	except AttributeError:
-		pbar = progress.ProgressBar(max=nFramesFile/(4*chunkSize), span=55)
+		pbar = progress.ProgressBar(max=nFramesFile/chunkSize, span=55)
 		
 	# Go!
 	done = False
+	
 	siCount = 0
 	while True:
 		## Read in the data
-		data = numpy.zeros((4, 4096*chunkSize), dtype=numpy.complex64)
-		count = [0 for i in xrange(data.shape[0])]
+		data = numpy.zeros((2*len(dataProducts), LFFT*chunkSize), dtype=numpy.float64)
 		
-		for i in xrange(4*chunkSize):
+		for i in xrange(chunkSize):
 			try:
-				frame = drx.readFrame(fh)
+				frame = drspec.readFrame(fh)
 			except errors.eofError, errors.syncError:
 				done = True
 				break
 				
-			beam,tune,pol = frame.parseID()
-			aStand = 2*(tune-1) + pol
+			try:
+				if frame.getTime() > oTime + 1.001*tInt:
+					print 'Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, frame.getTime(), oTime, tInt)
+			except NameError:
+				pass
+			oTime = frame.getTime()
 			
-			if ttFlow[aStand] + ttStep != frame.data.timeTag:
-				print 'Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, frame.data.timeTag/fS, ttFlow[aStand]/fS, ttStep/fS)
-			ttFlow[aStand] = frame.data.timeTag
-			
-			data[aStand, count[aStand]*4096:(count[aStand]+1)*4096] = frame.data.iq
-			count[aStand] += 1
+			j = 0
+			for t in (1,2):
+				for p in dataProducts:
+					data[j, i*LFFT:(i+1)*LFFT] = getattr(frame.data, "%s%i" % (p, t-1), None)
+					j += 1
 		siCount += 1
 		
 		## Are we done yet?
@@ -379,17 +333,17 @@ def main(args):
 			break
 			
 		## FFT
-		rawSpectra = PulsarEngineRaw(data, LFFT)
+		spectra = data
 		
 		## S-K flagging
-		flag = GenerateMask(rawSpectra)
+		flag = GenerateMask(spectra)
 		weight1 = numpy.where( flag[:2,:].sum(axis=0) == 0, 0, 1 ).astype(numpy.float32)
 		weight2 = numpy.where( flag[2:,:].sum(axis=0) == 0, 0, 1 ).astype(numpy.float32)
 		ff1 = 1.0*(LFFT - weight1.sum()) / LFFT
 		ff2 = 1.0*(LFFT - weight2.sum()) / LFFT
 		
 		## Detect power
-		data = reduceEngine(rawSpectra)
+		data = reduceEngine(spectra)
 		
 		## Optimal data scaling
 		bzero, bscale, data = OptimizeDataLevels(data, LFFT)
