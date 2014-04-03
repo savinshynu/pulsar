@@ -175,7 +175,7 @@ def main(args):
 	mjd_day = int(mjd)
 	mjd_sec = (mjd-mjd_day)*86400
 	if config['output'] is None:
-		config['output'] = "drspec_%05d_%05d" % (mjd_day, int(mjd_sec))
+		config['output'] = "drx_%05d_%s" % (mjd_day, config['source'])
 		
 	# File summary
 	print "Input Filename: %s" % config['args'][0]
@@ -281,7 +281,6 @@ def main(args):
 	
 	# Calculate the SK limites for weighting
 	if config['useSK'] and junkFrame.containsLinearData():
-		from lsl.statistics import kurtosis
 		skN = int(tInt*srate / LFFT)
 		skLimits = kurtosis.getLimits(4.0, M=1.0*nsblk, N=1.0*skN)
 		
@@ -359,7 +358,7 @@ def main(args):
 		## Write the spectra to the PSRFITS files
 		for j,sp,bz,bs,wt in zip(range(2), (data1, data2), (bzero1, bzero2), (bscale1, bscale2), (weight1, weight2)):
 			## Time
-			pfu_out[j].sub.offs = (pfu_out[j].tot_rows)*pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt
+			pfu_out[j].sub.offs = (pfu_out[j].tot_rows)*pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt+pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt/2.0
 			
 			## Data
 			ptr, junk = sp.__array_interface__['data']

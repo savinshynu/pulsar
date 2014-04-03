@@ -23,6 +23,8 @@ import lsl.reader.errors as errors
 import lsl.astro as astro
 import lsl.common.progress as progress
 from lsl.common.dp import fS
+from lsl.statistics import kurtosis
+from lsl.misc.dedispersion import coherent, getCoherentSampleSize
 
 from _psr import *
 
@@ -210,7 +212,7 @@ def main(args):
 	mjd_day = int(mjd)
 	mjd_sec = (mjd-mjd_day)*86400
 	if config['output'] is None:
-		config['output'] = "drx_%05d_%05d" % (mjd_day, int(mjd_sec))
+		config['output'] = "drx_%05d_%s" % (mjd_day, config['source'])
 		
 	## Tuning frequencies and initial time tags
 	ttStep = int(fS / srate * 4096)
@@ -228,7 +230,6 @@ def main(args):
 	fh.seek(-4*drx.FrameSize, 1)
 	
 	## Coherent Dedispersion Setup
-	from lsl.misc.dedispersion import coherent, getCoherentSampleSize
 	timesPerFrame = numpy.arange(4096, dtype=numpy.float64)/srate
 	spectraFreq1 = numpy.fft.fftshift( numpy.fft.fftfreq(LFFT, d=1.0/srate) ) + centralFreq1
 	spectraFreq2 = numpy.fft.fftshift( numpy.fft.fftfreq(LFFT, d=1.0/srate) ) + centralFreq2
@@ -347,7 +348,6 @@ def main(args):
 	
 	# Calculate the SK limites for weighting
 	if config['useSK']:
-		from lsl.statistics import kurtosis
 		skLimits = kurtosis.getLimits(4.0, 1.0*nsblk)
 		
 		GenerateMask = lambda x: ComputeSKMask(x, skLimits[0], skLimits[1])
@@ -523,7 +523,7 @@ def main(args):
 		## Write the spectra to the PSRFITS files
 		for j,sp,bz,bs,wt in zip(range(2), (data1, data2), (bzero1, bzero2), (bscale1, bscale2), (weight1, weight2)):
 			## Time
-			pfu_out[j].sub.offs = (pfu_out[j].tot_rows)*pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt
+			pfu_out[j].sub.offs = (pfu_out[j].tot_rows)*pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt+pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt/2.0
 			
 			## Data
 			ptr, junk = sp.__array_interface__['data']
