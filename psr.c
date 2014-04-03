@@ -22,6 +22,25 @@
 #define imaginary _Complex_I
 
 
+/*
+ Load in FFTW wisdom.  Based on the read_wisdom function in PRESTO.
+*/
+
+void read_wisdom(char *filename, PyObject *m) {
+	int status = 0;
+	FILE *wisdomfile;
+	
+	wisdomfile = fopen(filename, "r");
+	if( wisdomfile != NULL ) {
+		status = fftwf_import_wisdom_from_file(wisdomfile);
+		PyModule_AddObject(m, "useWisdom", PyBool_FromLong(status));
+		fclose(wisdomfile);
+	} else {
+		PyModule_AddObject(m, "useWisdom", PyBool_FromLong(status));
+	}
+}
+
+
 static PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *signals, *signalsF;
 	PyArrayObject *data, *dataF;
@@ -57,11 +76,10 @@ static PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds)
 	PyArray_FILLWBYTE(dataF, 0);
 	
 	// Create the FFTW plan
-	fftw_import_system_wisdom();
-	fftw_complex *inP, *in;
-	inP = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * nChan);
-	fftw_plan p;
-	p = fftw_plan_dft_1d(nChan, inP, inP, FFTW_FORWARD, FFTW_MEASURE);
+	fftwf_complex *inP, *in;
+	inP = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * nChan);
+	fftwf_plan p;
+	p = fftwf_plan_dft_1d(nChan, inP, inP, FFTW_FORWARD, FFTW_ESTIMATE);
 	
 	// FFT
 	long secStart;
@@ -81,7 +99,7 @@ static PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds)
 			#pragma omp for schedule(dynamic)
 		#endif
 		for(j=0; j<nFFT; j++) {
-			in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * nChan);
+			in = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * nChan);
 			
 			for(i=0; i<nStand; i++) {
 				secStart = nSamps * i + nChan*j;
@@ -91,7 +109,7 @@ static PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds)
 					in[k][1] = cimag(*(a + secStart + k));
 				}
 				
-				fftw_execute_dft(p, in, in);
+				fftwf_execute_dft(p, in, in);
 				
 				for(k=0; k<nChan; k++) {
 					if( k < nChan/2 ) {
@@ -101,11 +119,11 @@ static PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds)
 					}
 				}
 			}
-			fftw_free(in);
+			fftwf_free(in);
 		}
 	}
-	fftw_destroy_plan(p);
-	fftw_free(inP);
+	fftwf_destroy_plan(p);
+	fftwf_free(inP);
 	
 	Py_XDECREF(data);
 	
@@ -174,11 +192,10 @@ static PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject 
 	PyArray_FILLWBYTE(dataF, 0);
 	
 	// Create the FFTW plan
-	fftw_import_system_wisdom();
-	fftw_complex *inP, *in;
-	inP = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * nChan);
-	fftw_plan p;
-	p = fftw_plan_dft_1d(nChan, inP, inP, FFTW_FORWARD, FFTW_MEASURE);
+	fftwf_complex *inP, *in;
+	inP = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * nChan);
+	fftwf_plan p;
+	p = fftwf_plan_dft_1d(nChan, inP, inP, FFTW_FORWARD, FFTW_ESTIMATE);
 	
 	// FFT
 	long secStart;
@@ -200,7 +217,7 @@ static PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject 
 			#pragma omp for schedule(dynamic)
 		#endif
 		for(j=0; j<nFFT; j++) {
-			in = (fftw_complex*) fftw_malloc(sizeof(fftw_complex) * nChan);
+			in = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * nChan);
 			
 			for(i=0; i<nStand; i++) {
 				secStart = nSamps * i + nChan*j;
@@ -210,7 +227,7 @@ static PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject 
 					in[k][1] = *(c + k) * cimag(*(a + secStart + k));
 				}
 				
-				fftw_execute_dft(p, in, in);
+				fftwf_execute_dft(p, in, in);
 				
 				for(k=0; k<nChan; k++) {
 					if( k < nChan/2 ) {
@@ -220,11 +237,11 @@ static PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject 
 					}
 				}
 			}
-			fftw_free(in);
+			fftwf_free(in);
 		}
 	}
-	fftw_destroy_plan(p);
-	fftw_free(inP);
+	fftwf_destroy_plan(p);
+	fftwf_free(inP);
 	
 	Py_XDECREF(data);
 	Py_XDECREF(win);
@@ -891,9 +908,10 @@ static PyObject *OptimizeDataLevels(PyObject *self, PyObject *args, PyObject *kw
 				for(k=1; k<nFFT; k++) {
 					if( *(a + secStart + nChan*k) < *(tempMin + i*nChan + j) ) {
 						*(tempMin + i*nChan + j) = *(a + secStart + nChan*k);
-					}
-					if( *(a + secStart + nChan*k) > *(tempMax + i*nChan + j) ) {
-						*(tempMax + i*nChan + j) = *(a + secStart + nChan*k);
+					} else {
+						if( *(a + secStart + nChan*k) > *(tempMax + i*nChan + j) ) {
+							*(tempMax + i*nChan + j) = *(a + secStart + nChan*k);
+						}
 					}
 				}
 				
@@ -901,11 +919,11 @@ static PyObject *OptimizeDataLevels(PyObject *self, PyObject *args, PyObject *kw
 				*(c + i*nChan + j) = (float) ((*(tempMax + i*nChan + j) - *(tempMin + i*nChan + j)) / 255.0);
 				
 				for(k=0; k<nFFT; k++) {
-					tempV  = *(a + + secStart + nChan*k) - *(b + i*nChan + j);
+					tempV  = *(a + secStart + nChan*k) - *(b + i*nChan + j);
 					tempV /= *(c + i*nChan + j);
 					tempV  = round(tempV);
 					
-					*(d + + secStart + nChan*k) = (unsigned char) tempV;
+					*(d + secStart + nChan*k) = (unsigned char) tempV;
 				}
 			}
 		}
@@ -989,14 +1007,20 @@ See the inidividual functions for more details.");
 */
 
 PyMODINIT_FUNC init_psr(void) {
-	PyObject *m;
+	char filename[256];
+	PyObject *m, *pModule, *pDataPath;
 
 	// Module definitions and functions
 	m = Py_InitModule3("_psr", SpecMethods, spec_doc);
 	import_array();
 	
 	// Version and revision information
-	PyModule_AddObject(m, "__version__", PyString_FromString("0.2"));
+	PyModule_AddObject(m, "__version__", PyString_FromString("0.3"));
 	PyModule_AddObject(m, "__revision__", PyString_FromString("$Rev$"));
 	
+	// LSL FFTW Wisdom
+	pModule = PyImport_ImportModule("lsl.common.paths");
+	pDataPath = PyObject_GetAttrString(pModule, "data");
+	sprintf(filename, "%s/fftw_wisdom.txt", PyString_AsString(pDataPath));
+	read_wisdom(filename, m);
 }

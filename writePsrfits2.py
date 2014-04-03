@@ -236,6 +236,7 @@ def main(args):
 	print "Sample Time: %f s" % (LFFT/srate,)
 	print "Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol)
 	print "---"
+	print "Using FFTW Wisdom? %s" % useWisdom
 	
 	# Create the output PSRFITS file(s)
 	pfu_out = []

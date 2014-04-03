@@ -243,6 +243,7 @@ def main(args):
 	print "Sample Time: %f s" % (LFFT/srate,)
 	print "Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol)
 	print "---"
+	print "Using FFTW Wisdom? %s" % useWisdom
 	print "DM: %.4f pc / cm^3" % DM
 	print "Samples Needed: %i, %i" % (getCoherentSampleSize(centralFreq1-srate/2, 1.0*srate/LFFT, DM), getCoherentSampleSize(centralFreq2-srate/2, 1.0*srate/LFFT, DM))
 	
