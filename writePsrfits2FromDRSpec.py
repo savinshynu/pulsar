@@ -175,7 +175,7 @@ def main(args):
 	mjd_day = int(mjd)
 	mjd_sec = (mjd-mjd_day)*86400
 	if config['output'] is None:
-		config['output'] = "drx_%05d_%s" % (mjd_day, config['source'])
+		config['output'] = "drx_%05d_%s" % (mjd_day, config['source'].replace(' ', ''))
 		
 	# File summary
 	print "Input Filename: %s" % config['args'][0]
