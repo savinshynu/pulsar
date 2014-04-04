@@ -200,8 +200,10 @@ def main(args):
 	srate = float(obs1.attrs['sampleRate'])
 	beam = int(obs1.attrs['Beam'])
 	LFFT = int(obs1.attrs['LFFT'])
-	centralFreq1 = obs1tuning1['freq'][LFFT/2]
-	centralFreq2 = obs1tuning2['freq'][LFFT/2]
+	nChan = int(obs1.attrs['nChan'])
+	chanOffset = LFFT - nChan		# Packing offset to deal with old HDF5 files that contain only LFFT-1 channels
+	centralFreq1 = obs1tuning1['freq'][LFFT/2-chanOffset]
+	centralFreq2 = obs1tuning2['freq'][LFFT/2-chanOffset]
 	dataProducts = list(obs1tuning1)
 	dataProducts.sort()
 	try:
@@ -307,15 +309,23 @@ def main(args):
 		pfu_out.append(pfo)
 		
 	for i,t in enumerate((obs1tuning1, obs1tuning2)):
-		# Define the frequencies available in the file (in MHz)
-		pfu.convert2_double_array(pfu_out[i].sub.dat_freqs, t['freq'][:]/1e6, LFFT)
+		# Define the frequencies available in the file (in MHz) making sure to correct the array
+		# if chanOffset is not zero
+		tfreqs = numpy.zeros(LFFT, dtype=t['freq'].dtype)
+		tfreqs[chanOffset:] = t['freq'][:]/1e6
+		if chanOffset != 0:
+			tfreqs[:chanOffset] = (t['freq'][0] - numpy.arange(1, chanOffset+1)[::-1]*(t['freq'][1] - t['freq'][0])) / 1e6
+		pfu.convert2_double_array(pfu_out[i].sub.dat_freqs, tfreqs, LFFT)
 		
 		# Define which part of the spectra are good (1) or bad (0).  All channels
-		# are good except for the two outermost.
+		# are good except for the two outermost or those that are not contained in
+		# the input HDF5 file.
 		pfu.convert2_float_array(pfu_out[i].sub.dat_weights, numpy.ones(LFFT),  LFFT)
 		pfu.set_float_value(pfu_out[i].sub.dat_weights, 0,      0)
 		pfu.set_float_value(pfu_out[i].sub.dat_weights, LFFT-1, 0)
-		
+		for j in xrange(chanOffset):
+			pfu.set_float_value(pfu_out[i].sub.dat_weights, j, 0)
+			
 		# Define the data scaling (default is a scale of one and an offset of zero)
 		pfu.convert2_float_array(pfu_out[i].sub.dat_offsets, numpy.zeros(LFFT*nPols), LFFT*nPols)
 		pfu.convert2_float_array(pfu_out[i].sub.dat_scales,  numpy.ones(LFFT*nPols),  LFFT*nPols)
@@ -364,7 +374,7 @@ def main(args):
 			k = 0
 			for t in (obs1tuning1, obs1tuning2):
 				for p in dataProducts:
-					data[k, j*LFFT:(j+1)*LFFT] = t[p][jP,:]
+					data[k, j*LFFT+chanOffset:(j+1)*LFFT] = t[p][jP,:]
 					k += 1
 		siCount += 1
 		
