@@ -5,7 +5,7 @@ LDFLAGS = $(shell python-config --ldflags) $(shell pkg-config --libs fftw3f)
 _psr.so: psr.o
 	$(CC) -o _psr.so psr.o -lm -shared -fopenmp $(LDFLAGS)
 	
-psr.o:
+psr.o: psr.c
 	$(CC) -c $(CFLAGS) -fPIC -o psr.o psr.c -funroll-loops -O3 -fopenmp
 	
 clean:

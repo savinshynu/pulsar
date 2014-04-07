@@ -41,6 +41,7 @@ Options:
 -s, --source                Source name
 -r, --ra                    Right Ascension (HH:MM:SS.SS, J2000)
 -d, --dec                   Declination (sDD:MM:SS.S, J2000)
+-4, --4bit-data             Save the spectra in 4-bit mode (default = 8-bit)
 
 Note:  If a source name is provided and the RA or declination is not, the script
        will attempt to determine these values.
@@ -67,7 +68,7 @@ def parseOptions(args):
 	
 	# Read in and process the command line flags
 	try:
-		opts, args = getopt.getopt(args, "hpns:o:r:d:", ["help", "no-sk-flagging", "no-summing", "source=", "output=", "ra=", "dec="])
+		opts, args = getopt.getopt(args, "hpns:o:r:d:4", ["help", "no-sk-flagging", "no-summing", "source=", "output=", "ra=", "dec=", "4bit-mode"])
 	except getopt.GetoptError, err:
 		# Print help information and exit:
 		print str(err) # will print something like "option -a not recognized"
@@ -89,6 +90,8 @@ def parseOptions(args):
 			config['dec'] = value
 		elif opt in ('-o', '--output'):
 			config['output'] = value
+		elif opt in ('-4', '--4bit-mode'):
+			config['dataBits'] = 4
 		else:
 			assert False
 			
@@ -207,6 +210,11 @@ def main(args):
 		nPols = len(dataProducts)
 		reduceEngine = lambda x: x
 		
+	if config['dataBits'] == 4:
+		OptimizeDataLevels = OptimizeDataLevels4Bit
+	else:
+		OptimizeDataLevels = OptimizeDataLevels8Bit
+		
 	for t in xrange(1, 2+1):
 		## Basic structure and bounds
 		pfo = pfu.psrfits()
@@ -229,7 +237,7 @@ def main(args):
 		pfo.hdr.observer = "wP2FromDRSpec.py"
 		pfo.hdr.source = config['source']
 		pfo.hdr.fd_hand = 1
-		pfo.hdr.nbits = 8
+		pfo.hdr.nbits = config['dataBits']
 		pfo.hdr.nsblk = nsblk
 		pfo.hdr.ds_freq_fact = 1
 		pfo.hdr.ds_time_fact = 1
@@ -254,8 +262,12 @@ def main(args):
 		pfo.sub.dat_weights = pfu.malloc_floatp(pfo.hdr.nchan*4)				# 4-bytes per float @ LFFT channels
 		pfo.sub.dat_offsets = pfu.malloc_floatp(pfo.hdr.nchan*pfo.hdr.npol*4)		# 4-bytes per float @ LFFT channels per pol.
 		pfo.sub.dat_scales  = pfu.malloc_floatp(pfo.hdr.nchan*pfo.hdr.npol*4)		# 4-bytes per float @ LFFT channels per pol.
-		pfo.sub.rawdata = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk)	# 1-byte per unsigned char @ (LFFT channels x pols. x nsblk sub-integrations) samples
-		
+		if config['dataBits'] == 4:
+			pfo.sub.data = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk)	# 1-byte per unsigned char @ (LFFT channels x pols. x nsblk sub-integrations) samples
+			pfo.sub.rawdata = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk/2)	# 4-bits per nibble @ (LFFT channels x pols. x nsblk sub-integrations) samples
+		else:
+			pfo.sub.rawdata = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk)	# 1-byte per unsigned char @ (LFFT channels x pols. x nsblk sub-integrations) samples
+			
 		## Create and save it for later use
 		pfu.psrfits_create(pfo)
 		pfu_out.append(pfo)
@@ -362,8 +374,11 @@ def main(args):
 			
 			## Data
 			ptr, junk = sp.__array_interface__['data']
-			ctypes.memmove(int(pfu_out[j].sub.rawdata), ptr, pfu_out[j].hdr.nchan*pfu_out[j].hdr.nsblk)
-			
+			if config['dataBits'] == 4:
+				ctypes.memmove(int(pfu_out[j].sub.data), ptr, pfu_out[j].hdr.nchan*pfu_out[j].hdr.nsblk)
+			else:
+				ctypes.memmove(int(pfu_out[j].sub.rawdata), ptr, pfu_out[j].hdr.nchan*pfu_out[j].hdr.nsblk)
+				
 			## Zero point
 			ptr, junk = bz.__array_interface__['data']
 			ctypes.memmove(int(pfu_out[j].sub.dat_offsets), ptr, pfu_out[j].hdr.nchan*nPols*4)

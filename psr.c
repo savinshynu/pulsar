@@ -824,7 +824,7 @@ Outputs:\n\
 ");
 
 
-static PyObject *OptimizeDataLevels(PyObject *self, PyObject *args, PyObject *kwds) {
+static PyObject *OptimizeDataLevels8Bit(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *spectra, *output;
 	PyArrayObject *data, *zeroF, *scaleF, *dataF;
 	long i, j, k, nStand, nSamps, nFFT;
@@ -942,9 +942,143 @@ static PyObject *OptimizeDataLevels(PyObject *self, PyObject *args, PyObject *kw
 	return output;
 }
 
-PyDoc_STRVAR(OptimizeDataLevels_doc, \
+PyDoc_STRVAR(OptimizeDataLevels8Bit_doc, \
 "Given the output of one of the 'Combine' functions, find the bzero and bscale\n\
 values that yield the best representation of the data as unsigned characters\n\
+and scale the data accordingly.\n\
+\n\
+Input arguments are:\n\
+ * signals: 2-D numpy.float64 (stands by samples) array of combined data\n\
+ * LFFT: number of channels per data stream\n\
+\n\
+Outputs:\n\
+ * bzero: 2-D numpy.float32 (stands by channels) array of bzero values\n\
+ * bscale: 2-D numpy.float32 (stand by channels) array of bscale values\n\
+ * spectra: 2-D numpy.unit8 (stands by samples) array of spectra\n\
+");
+
+
+static PyObject *OptimizeDataLevels4Bit(PyObject *self, PyObject *args, PyObject *kwds) {
+	PyObject *spectra, *output;
+	PyArrayObject *data, *zeroF, *scaleF, *dataF;
+	long i, j, k, nStand, nSamps, nFFT;
+	int nChan = 64;
+	
+	static char *kwlist[] = {"signals", "LFFT", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "Oi", kwlist, &spectra, &nChan)) {
+		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
+		return NULL;
+	}
+	
+	// Bring the data into C and make it usable
+	data = (PyArrayObject *) PyArray_ContiguousFromObject(spectra, NPY_FLOAT64, 2, 2);
+	
+	// Get the properties of the data
+	nStand = (long) data->dimensions[0];
+	nSamps = (long) data->dimensions[1];
+	
+	// Find out how large the output array needs to be and initialize it
+	nFFT = nSamps / nChan;
+	npy_intp dims[2];
+	dims[0] = (npy_intp) nStand;
+	dims[1] = (npy_intp) nChan;
+	zeroF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+	if(zeroF == NULL) {
+		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+		Py_XDECREF(data);
+		return NULL;
+	}
+	PyArray_FILLWBYTE(zeroF, 0);
+	
+	dims[0] = (npy_intp) nStand;
+	dims[1] = (npy_intp) nChan;
+	scaleF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+	if(scaleF == NULL) {
+		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+		Py_XDECREF(data);
+		return NULL;
+	}
+	PyArray_FILLWBYTE(scaleF, 0);
+	
+	dims[0] = (npy_intp) nStand;
+	dims[1] = (npy_intp) nSamps;
+	dataF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_UINT8);
+	if(dataF == NULL) {
+		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+		Py_XDECREF(data);
+		return NULL;
+	}
+	PyArray_FILLWBYTE(dataF, 0);
+	
+	// Go!
+	long secStart;
+	double *tempMin, *tempMax, tempV;
+	double *a;
+	float *b, *c;
+	unsigned char *d;
+	a = (double *) data->data;
+	b = (float *) zeroF->data;
+	c = (float *) scaleF->data;
+	d = (unsigned char *) dataF->data;
+	
+	tempMin = (double *) malloc(nStand*nChan*sizeof(double));
+	tempMax = (double *) malloc(nStand*nChan*sizeof(double));
+	
+	#ifdef _OPENMP
+		#pragma omp parallel default(shared) private(secStart, i, j, k, tempV)
+	#endif
+	{
+		#ifdef _OPENMP
+			#pragma omp for schedule(dynamic)
+		#endif
+		for(j=0; j<nChan; j++) {
+			for(i=0; i<nStand; i++) {
+				secStart = nSamps*i + j;
+				
+				k = 0;
+				*(tempMin + i*nChan + j) = *(a + secStart + nChan*k);
+				*(tempMax + i*nChan + j) = *(a + secStart + nChan*k);
+				
+				for(k=1; k<nFFT; k++) {
+					if( *(a + secStart + nChan*k) < *(tempMin + i*nChan + j) ) {
+						*(tempMin + i*nChan + j) = *(a + secStart + nChan*k);
+					} else {
+						if( *(a + secStart + nChan*k) > *(tempMax + i*nChan + j) ) {
+							*(tempMax + i*nChan + j) = *(a + secStart + nChan*k);
+						}
+					}
+				}
+				
+				*(b + i*nChan + j) = (float) *(tempMin + i*nChan + j);
+				*(c + i*nChan + j) = (float) ((*(tempMax + i*nChan + j) - *(tempMin + i*nChan + j)) / 15.0);
+				
+				for(k=0; k<nFFT; k++) {
+					tempV  = *(a + secStart + nChan*k) - *(b + i*nChan + j);
+					tempV /= *(c + i*nChan + j);
+					tempV  = round(tempV);
+					
+					*(d + secStart + nChan*k) = ((unsigned char) tempV ) & 0xF;
+				}
+			}
+		}
+	}
+	
+	free(tempMin);
+	free(tempMax);
+	
+	Py_XDECREF(data);
+	
+	output = Py_BuildValue("(OOO)", PyArray_Return(zeroF), PyArray_Return(scaleF), PyArray_Return(dataF));
+	Py_XDECREF(zeroF);
+	Py_XDECREF(scaleF);
+	Py_XDECREF(dataF);
+	
+	return output;
+}
+
+PyDoc_STRVAR(OptimizeDataLevels4Bit_doc, \
+"Given the output of one of the 'Combine' functions, find the bzero and bscale\n\
+values that yield the best representation of the data as 4-bit unsigned integers\n\
 and scale the data accordingly.\n\
 \n\
 Input arguments are:\n\
@@ -963,16 +1097,17 @@ Outputs:\n\
 */
 
 static PyMethodDef SpecMethods[] = {
-	{"PulsarEngineRaw",       (PyCFunction) PulsarEngineRaw,       METH_VARARGS|METH_KEYWORDS, PulsarEngineRaw_doc       },
-	{"PulsarEngineRawWindow", (PyCFunction) PulsarEngineRawWindow, METH_VARARGS|METH_KEYWORDS, PulsarEngineRawWindow_doc },
-	{"ComputeSKMask",         (PyCFunction) ComputeSKMask,         METH_VARARGS,               ComputeSKMask_doc         },
-	{"ComputePseudoSKMask",   (PyCFunction) ComputePseudoSKMask,   METH_VARARGS,               ComputePseudoSKMask_doc   },
-	{"CombineToIntensity",    (PyCFunction) CombineToIntensity,    METH_VARARGS,               CombineToIntensity_doc    }, 
-	{"CombineToLinear",       (PyCFunction) CombineToLinear,       METH_VARARGS,               CombineToLinear_doc       }, 
-	{"CombineToCircular",     (PyCFunction) CombineToCircular,     METH_VARARGS,               CombineToCircular_doc     }, 
-	{"CombineToStokes",       (PyCFunction) CombineToStokes,       METH_VARARGS,               CombineToStokes_doc       },
-	{"OptimizeDataLevels",    (PyCFunction) OptimizeDataLevels,    METH_VARARGS,               OptimizeDataLevels_doc    },
-	{NULL,                    NULL,                                0,                          NULL                      }
+	{"PulsarEngineRaw",        (PyCFunction) PulsarEngineRaw,        METH_VARARGS|METH_KEYWORDS, PulsarEngineRaw_doc        },
+	{"PulsarEngineRawWindow",  (PyCFunction) PulsarEngineRawWindow,  METH_VARARGS|METH_KEYWORDS, PulsarEngineRawWindow_doc  },
+	{"ComputeSKMask",          (PyCFunction) ComputeSKMask,          METH_VARARGS,               ComputeSKMask_doc          },
+	{"ComputePseudoSKMask",    (PyCFunction) ComputePseudoSKMask,    METH_VARARGS,               ComputePseudoSKMask_doc    },
+	{"CombineToIntensity",     (PyCFunction) CombineToIntensity,     METH_VARARGS,               CombineToIntensity_doc     }, 
+	{"CombineToLinear",        (PyCFunction) CombineToLinear,        METH_VARARGS,               CombineToLinear_doc        }, 
+	{"CombineToCircular",      (PyCFunction) CombineToCircular,      METH_VARARGS,               CombineToCircular_doc      }, 
+	{"CombineToStokes",        (PyCFunction) CombineToStokes,        METH_VARARGS,               CombineToStokes_doc        },
+	{"OptimizeDataLevels8Bit", (PyCFunction) OptimizeDataLevels8Bit, METH_VARARGS,               OptimizeDataLevels8Bit_doc },
+	{"OptimizeDataLevels4Bit", (PyCFunction) OptimizeDataLevels4Bit, METH_VARARGS,               OptimizeDataLevels4Bit_doc },
+	{NULL,                     NULL,                                 0,                          NULL                       }
 };
 
 PyDoc_STRVAR(spec_doc, \
@@ -1015,7 +1150,7 @@ PyMODINIT_FUNC init_psr(void) {
 	import_array();
 	
 	// Version and revision information
-	PyModule_AddObject(m, "__version__", PyString_FromString("0.3"));
+	PyModule_AddObject(m, "__version__", PyString_FromString("0.4"));
 	PyModule_AddObject(m, "__revision__", PyString_FromString("$Rev$"));
 	
 	// LSL FFTW Wisdom
