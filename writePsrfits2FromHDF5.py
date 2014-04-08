@@ -27,7 +27,7 @@ from _psr import *
 
 
 def usage(exitCode=None):
-	print """writePrsfits2FromHDF5.py - Read in DR spectrometer/HDF5 files and create one or 
+	print """writePsrfits2FromHDF5.py - Read in DR spectrometer/HDF5 files and create one or 
 more PSRFITS file(s).
 
 Usage: writePsrfits2FromHDF5.py [OPTIONS] file
@@ -64,10 +64,11 @@ def parseOptions(args):
 	config['source'] = None
 	config['ra'] = None
 	config['dec'] = None
+	config['dataBits'] = 8
 	
 	# Read in and process the command line flags
 	try:
-		opts, args = getopt.getopt(args, "hpns:o:r:d:", ["help", "no-sk-flagging", "no-summing", "source=", "output=", "ra=", "dec="])
+		opts, args = getopt.getopt(args, "hpns:o:r:d:4", ["help", "no-sk-flagging", "no-summing", "source=", "output=", "ra=", "dec=", "4bit-mode"])
 	except getopt.GetoptError, err:
 		# Print help information and exit:
 		print str(err) # will print something like "option -a not recognized"
@@ -89,6 +90,8 @@ def parseOptions(args):
 			config['dec'] = value
 		elif opt in ('-o', '--output'):
 			config['output'] = value
+		elif opt in ('-4', '--4bit-mode'):
+			config['dataBits'] = 4
 		else:
 			assert False
 			
