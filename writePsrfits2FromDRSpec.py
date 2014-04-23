@@ -65,6 +65,7 @@ def parseOptions(args):
 	config['source'] = None
 	config['ra'] = None
 	config['dec'] = None
+	config['dataBits'] = 8
 	
 	# Read in and process the command line flags
 	try:
