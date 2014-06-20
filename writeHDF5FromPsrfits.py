@@ -123,7 +123,7 @@ def main(args):
 		dec = decSign*sum([float(v)/60**i for i,v in enumerate(dec)])
 		epoch = float(hdulist[0].header['EQUINOX'])
 		
-		tStart = astro.utcjd_to_unix(hdulist[0].header['STT_IMJD'] + hdulist[0].header['STT_OFFS'] + astro.MJD_OFFSET)
+		tStart = astro.utcjd_to_unix(hdulist[0].header['STT_IMJD'] + (hdulist[0].header['STT_SMJD'] + hdulist[0].header['STT_OFFS'])/86400.0 + astro.MJD_OFFSET)
 		cFreq = hdulist[0].header['OBSFREQ']*1e6	# MHz -> Hz
 		srate = hdulist[0].header['OBSBW']*1e6		# MHz -> Hz
 		LFFT = hdulist[1].header['NCHAN']
