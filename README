@@ -28,6 +28,11 @@ writePsrfits2FromHDF5.py
 Given an HDF5 created by hdfWaterfall.py or drspec2hdf.py, create a PSRFITS 
 file of the data.
 
+writeHDF5FromPsrfits.py
+-----------------------
+Given a PSRFITS file created by the writePsrfit2 family of converters, build
+an HDF5 file that is compatiable with the tools in Commissioning/DRX/HDF5.
+
 psr.c
 -----
 Compiled Python/NumPy extension used by the scripts to speed up processing.
@@ -35,3 +40,8 @@ Compiled Python/NumPy extension used by the scripts to speed up processing.
 Makefile
 --------
 Makefile for the psr.c module.
+
+data.py
+-------
+External file from Commissioning/DRX/HDF5 used by writeHDF5FromPsrfits.py
+for building the HDF5 files.
