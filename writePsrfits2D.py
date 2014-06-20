@@ -541,9 +541,9 @@ def main(args):
 			## Data
 			ptr, junk = sp.__array_interface__['data']
 			if config['dataBits'] == 4:
-				ctypes.memmove(int(pfu_out[j].sub.data), ptr, pfu_out[j].hdr.nchan*pfu_out[j].hdr.nsblk)
+				ctypes.memmove(int(pfu_out[j].sub.data), ptr, pfu_out[j].hdr.nchan*nPols*pfu_out[j].hdr.nsblk)
 			else:
-				ctypes.memmove(int(pfu_out[j].sub.rawdata), ptr, pfu_out[j].hdr.nchan*pfu_out[j].hdr.nsblk)
+				ctypes.memmove(int(pfu_out[j].sub.rawdata), ptr, pfu_out[j].hdr.nchan*nPols*pfu_out[j].hdr.nsblk)
 				
 			## Zero point
 			ptr, junk = bz.__array_interface__['data']
