@@ -269,6 +269,122 @@ Outputs:\n\
 ");
 
 
+static PyObject *PhaseRotator(PyObject *self, PyObject *args, PyObject *kwds) {
+	PyObject *signals, *f1, *f2, *signalsF;
+	PyArrayObject *data, *freq1, *freq2, *dataF;
+	double delay;	
+
+	long i, j, k, nStand, nSamps, nChan, nFFT;
+	
+	static char *kwlist[] = {"signals", "freq1", "freq2", "delay", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OOOd", kwlist, &signals, &f1, &f2, &delay)) {
+		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
+		return NULL;
+	}
+	
+	// Bring the data into C and make it usable
+	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_COMPLEX64, 3, 3);
+	freq1 = (PyArrayObject *) PyArray_ContiguousFromObject(f1, NPY_FLOAT64, 1, 1);
+	freq2 = (PyArrayObject *) PyArray_ContiguousFromObject(f2, NPY_FLOAT64, 1, 1);
+	
+	// Get the properties of the data
+	nStand = (long) data->dimensions[0];
+	nChan  = (long) data->dimensions[1];
+	nFFT   = (long) data->dimensions[2];
+	
+	// Validate
+	if( freq1->dimensions[0] != nChan ) {
+		PyErr_Format(PyExc_ValueError, "Frequency array 1 has different dimensions than rawSpectra");
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		return NULL;
+	}
+	if( freq2->dimensions[0] != nChan ) {
+		PyErr_Format(PyExc_ValueError, "Frequency array 2 has different dimensions than rawSpectra");
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		return NULL;
+	}	
+	
+	// Find out how large the output array needs to be and initialize it
+	npy_intp dims[3];
+	dims[0] = (npy_intp) nStand;
+	dims[1] = (npy_intp) nChan;
+	dims[2] = (npy_intp) nFFT;
+	dataF = (PyArrayObject*) PyArray_SimpleNew(3, dims, NPY_COMPLEX64);
+	if(dataF == NULL) {
+		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		return NULL;
+	}
+	PyArray_FILLWBYTE(dataF, 0);
+	
+	// Go!
+	long secStart;
+	double tempF;
+	float complex *a, *d;
+	double *b, *c;
+	a = (float complex *) data->data;
+	b = (double *) freq1->data;
+	c = (double *) freq2->data;
+	d = (float complex *) dataF->data;
+	
+	#ifdef _OPENMP
+		#pragma omp parallel default(shared) private(secStart, i, j, k, tempF)
+	#endif
+	{
+		#ifdef _OPENMP
+			#pragma omp for schedule(dynamic)
+		#endif
+		for(j=0; j<nChan; j++) {
+			for(i=0; i<nStand; i+=1) {
+				secStart = nSamps*i + nFFT*j;
+				if( i/2 == 0 ) {
+					tempF = *(b + j);
+				} else {
+					tempF = *(c + j);
+				}
+				
+				for(k=0; k<nFFT; k++) {
+					*(d + secStart + k) = *(a + secStart + k) * cexp(2*imaginary*PI*tempF*delay);
+				}
+			}
+		}
+	}
+	
+	Py_XDECREF(data);
+	Py_XDECREF(freq1);
+	Py_XDECREF(freq2);
+	
+	signalsF = Py_BuildValue("O", PyArray_Return(dataF));
+	Py_XDECREF(dataF);
+
+	return signalsF;
+}
+
+PyDoc_STRVAR(PhaseRotator_doc, \
+"Given the output of PulsarEngineRaw, apply a sub-sample delay as a phase\n\
+rotation to each channel\n\
+\n\
+Input arguments are:\n\
+ * signals: 3-D numpy.complex64 (stands by channels by integrations) array\n\
+   of data to FFT\n\
+ * freq1: 1-D numpy.float64 array of frequencies for each channel for the\n\
+   first two stands in signals\n\
+ * freq2: 1-D numpy.float64 array of frequencies for each channel for the\n\
+   second two stands in signals\n\
+ * delay: delay in seconds to apply\n\
+\n\
+Outputs:\n\
+ * signals: 3-D numpy.complex64 (stands by channels by integrations) of the\n\
+   phase-rotated spectra data\n\
+");
+
+
 static PyObject *ComputeSKMask(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *signals, *signalsF;
 	PyArrayObject *data, *dataF;
@@ -1099,6 +1215,7 @@ Outputs:\n\
 static PyMethodDef SpecMethods[] = {
 	{"PulsarEngineRaw",        (PyCFunction) PulsarEngineRaw,        METH_VARARGS|METH_KEYWORDS, PulsarEngineRaw_doc        },
 	{"PulsarEngineRawWindow",  (PyCFunction) PulsarEngineRawWindow,  METH_VARARGS|METH_KEYWORDS, PulsarEngineRawWindow_doc  },
+	{"PhaseRotator",           (PyCFunction) PhaseRotator,           METH_VARARGS,               PhaseRotator_doc           },
 	{"ComputeSKMask",          (PyCFunction) ComputeSKMask,          METH_VARARGS,               ComputeSKMask_doc          },
 	{"ComputePseudoSKMask",    (PyCFunction) ComputePseudoSKMask,    METH_VARARGS,               ComputePseudoSKMask_doc    },
 	{"CombineToIntensity",     (PyCFunction) CombineToIntensity,     METH_VARARGS,               CombineToIntensity_doc     }, 
@@ -1119,6 +1236,8 @@ The functions defined in this module are:\n\
     of stands/beams all at once.\n\
   * PulsarEngineRawWindow - Similar to PulsarEngineRaw but also requires\n\
     a numpy.float64 array for a window to apply to the data\n\
+  * PhaseRotator - Given the output of PulsarEngineRaw, apply a sub-sample\n\
+    delay as a phase rotation.\n\
   * ComputeSKMask - Given the output of PulsarEngineRaw compute a mask for\n\
     using spectral kurtosis\n\
   * ComputePseudoSKMask - Similar to ComputeSKMask but for DR spectrometer data\n\

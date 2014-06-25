@@ -28,6 +28,13 @@ writePsrfits2FromHDF5.py
 Given an HDF5 created by hdfWaterfall.py or drspec2hdf.py, create a PSRFITS 
 file of the data.
 
+writePsrfits2Multi.py
+---------------------
+Experimental script to that takes in a collection of DRX files observed at 
+the same time and processes them such that they are aligned in time.  This
+yields PSRFITS files that can be combined with the 'combine_lwa' script
+across multiple beams.
+
 writeHDF5FromPsrfits.py
 -----------------------
 Given a PSRFITS file created by the writePsrfit2 family of converters, build
