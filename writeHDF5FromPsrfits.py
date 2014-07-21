@@ -253,8 +253,11 @@ def main(args):
 			ds['obs1'].attrs['nChan'] = LFFT
 			
 			### Create the progress bar so that we can keep up with the conversion.
-			pbar = progress.ProgressBar(max=len(filenames)*dur)
-			
+			try:
+				pbar = progress.ProgressBarPlus(max=len(filenames)*dur)
+			except AttributeError:
+				pbar = progress.ProgressBar(max=len(filenames)*dur)
+				
 		## Frequency information
 		freq = hdulist[1].data[0][12]*1e6		# MHz -> Hz
 		ds['obs1'].attrs['RBW'] = freq[1]-freq[0]
