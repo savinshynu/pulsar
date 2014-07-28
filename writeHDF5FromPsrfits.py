@@ -289,7 +289,7 @@ def main(args):
 			### Apply the scaling/offset to the data and save the results 
 			### to the HDF5 file
 			for j in xrange(nSubs):
-				k = i*nSubs + j
+				k = (i-skip)*nSubs + j
 				t = subint[1] + tInt*(j-nSubs/2)
 				d = data[:,:,j]*bscl + bzero
 				

@@ -40,6 +40,12 @@ writeHDF5FromPsrfits.py
 Given a PSRFITS file created by the writePsrfit2 family of converters, build
 an HDF5 file that is compatiable with the tools in Commissioning/DRX/HDF5.
 
+updatePsrfitsMask.py
+--------------------
+Use spectral kurtosis to update the weight mask in a PSRFITS file to flag RFI.
+The script also takes in a list of frequencies/frequency ranges that can be 
+used to update the weight mask.
+
 psr.c
 -----
 Compiled Python/NumPy extension used by the scripts to speed up processing.
