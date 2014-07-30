@@ -239,7 +239,7 @@ def main(args):
 			### Target metadata
 			ds['obs1'].attrs['ObservationName'] = sourceName
 			ds['obs1'].attrs['TargetName'] = sourceName
-			ds['obs1'].attrs['RA'] = ra
+			ds['obs1'].attrs['RA'] = ra/15.0
 			ds['obs1'].attrs['RA_Units'] = 'hours'
 			ds['obs1'].attrs['Dec'] = dec
 			ds['obs1'].attrs['Dec_Units'] = 'degrees'
