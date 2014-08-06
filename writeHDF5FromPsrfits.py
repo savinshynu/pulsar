@@ -96,7 +96,7 @@ def main(args):
 	# Open the file and load in basic information about the observation's goal
 	for c,filename in enumerate(filenames):
 		## Ready the PSRFITS file
-		hdulist = pyfits.open(filename)
+		hdulist = pyfits.open(filename, memmap=True)
 		
 		## Try to find out the beam/tuning
 		mtch = _fnRE.search(filename)
@@ -185,7 +185,7 @@ def main(args):
 		print "Tuning Frequency: %.3f Hz" % cFreq
 		print "---"
 		print "Target: %s" % sourceName
-		print "RA: %.3f hours" % ra
+		print "RA: %.3f hours" % (ra/15.0,)
 		print "Dec: %.3f degrees" % dec
 		print "Data Products: %s" % ','.join(dataProducts)
 		print "Integration Time: %.3f ms" % (tInt*1e3,)
