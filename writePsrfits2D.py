@@ -24,7 +24,7 @@ import lsl.astro as astro
 import lsl.common.progress as progress
 from lsl.common.dp import fS
 from lsl.statistics import kurtosis
-from lsl.misc.dedispersion import coherent, getCoherentSampleSize
+from lsl.misc.dedispersion import getCoherentSampleSize
 
 from _psr import *
 
@@ -46,6 +46,7 @@ Options:
 -r, --ra                    Right Ascension (HH:MM:SS.SS, J2000)
 -d, --dec                   Declination (sDD:MM:SS.S, J2000)
 -4, --4bit-data             Save the spectra in 4-bit mode (default = 8-bit)
+-w, --disable-window        Disable time-domain data windowing
 
 Note:  If a source name is provided and the RA or declination is not, the script
        will attempt to determine these values.
@@ -73,10 +74,11 @@ def parseOptions(args):
 	config['ra'] = None
 	config['dec'] = None
 	config['dataBits'] = 8
+	config['enableWindow'] = True
 	
 	# Read in and process the command line flags
 	try:
-		opts, args = getopt.getopt(args, "hc:pniks:o:r:d:4", ["help", "nchan=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode"])
+		opts, args = getopt.getopt(args, "hc:pniks:o:r:d:4w", ["help", "nchan=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode", "disable-window"])
 	except getopt.GetoptError, err:
 		# Print help information and exit:
 		print str(err) # will print something like "option -a not recognized"
@@ -109,6 +111,8 @@ def parseOptions(args):
 			config['output'] = value
 		elif opt in ('-4', '--4bit-mode'):
 			config['dataBits'] = 4
+		elif opt in ('-w', '--disable-window'):
+			config['enableWindow'] = False
 		else:
 			assert False
 			
@@ -250,7 +254,7 @@ def main(args):
 	print "---"
 	print "Using FFTW Wisdom? %s" % useWisdom
 	print "DM: %.4f pc / cm^3" % DM
-	print "Samples Needed: %i, %i" % (getCoherentSampleSize(centralFreq1-srate/2, 1.0*srate/LFFT, DM), getCoherentSampleSize(centralFreq2-srate/2, 1.0*srate/LFFT, DM))
+	print "Samples Needed: %i, %i to %i, %i" % (getCoherentSampleSize(centralFreq1-srate/2, 1.0*srate/LFFT, DM), getCoherentSampleSize(centralFreq2-srate/2, 1.0*srate/LFFT, DM), getCoherentSampleSize(centralFreq1+srate/2, 1.0*srate/LFFT, DM), getCoherentSampleSize(centralFreq2+srate/2, 1.0*srate/LFFT, DM))
 	
 	# Create the output PSRFITS file(s)
 	pfu_out = []
@@ -277,13 +281,19 @@ def main(args):
 	else:
 		OptimizeDataLevels = OptimizeDataLevels8Bit
 		
+	# Adjust the time for the padding used for coherent dedispersion
+	print "MJD shifted by %.3f ms to account for padding" %  (nsblk*LFFT/srate*1000.0,)
+	beginDate = ephem.Date(astro.unix_to_utcjd(junkFrame.getTime() + nsblk*LFFT/srate) - astro.DJD_OFFSET)
+	beginTime = beginDate.datetime()
+	mjd = astro.jd_to_mjd(astro.unix_to_utcjd(junkFrame.getTime() + nsblk*LFFT/srate))
+	
 	for t in xrange(1, 2+1):
 		## Basic structure and bounds
 		pfo = pfu.psrfits()
 		pfo.basefilename = "%s_b%it%i" % (config['output'], beam, t)
 		pfo.filenum = 0
 		pfo.tot_rows = pfo.N = pfo.T = pfo.status = pfo.multifile = 0
-		pfo.rows_per_file = 8192
+		pfo.rows_per_file = 32768
 		
 		## Frequency, bandwidth, and channels
 		if t == 1:
@@ -356,9 +366,13 @@ def main(args):
 	# Find out how many frames per tuning/polarization that corresponds to.
 	chunkSize = nsblk*LFFT/4096
 	
-	# Evaluate the window function
-	window = numpy.hamming(LFFT)
-	
+	# Evaluate the window function, if needed
+	if config['enableWindow']:
+		window = numpy.hamming(LFFT)
+		fftEngine = lambda x: PulsarEngineRawWindow(x, window, LFFT=LFFT)
+	else:
+		fftEngine = lambda x: PulsarEngineRaw(x, LFFT=LFFT)
+		
 	# Calculate the SK limites for weighting
 	if config['useSK']:
 		skLimits = kurtosis.getLimits(4.0, 1.0*nsblk)
@@ -430,14 +444,13 @@ def main(args):
 	siCount += 1
 	
 	## FFT
-	rawSpectraPrev = PulsarEngineRawWindow(dataPrev, window, LFFT)
-	rawSpectra = PulsarEngineRawWindow(data, window, LFFT)
+	rawSpectraPrev = fftEngine(dataPrev)
+	rawSpectra = fftEngine(data)
 	
-	first = True
+	dataNext = numpy.zeros((4, 4096*chunkSize), dtype=numpy.complex64)
+	drxtNext = numpy.zeros(dataNext.shape, dtype=numpy.float64)
 	while True:
 		## Read in the data next data block
-		dataNext = numpy.zeros((4, 4096*chunkSize), dtype=numpy.complex64)
-		drxtNext = numpy.zeros(dataNext.shape, dtype=numpy.float64)
 		countNext = [0 for i in xrange(dataNext.shape[0])]
 		
 		for i in xrange(4*chunkSize):
@@ -457,6 +470,7 @@ def main(args):
 			dataNext[aStand, countNext[aStand]*4096:(countNext[aStand]+1)*4096] = frame.data.iq
 			drxtNext[aStand, countNext[aStand]*4096:(countNext[aStand]+1)*4096] = frame.getTime() + timesPerFrame
 			countNext[aStand] += 1
+		
 		siCount += 1
 		
 		## Are we done yet?
@@ -464,7 +478,7 @@ def main(args):
 			break
 			
 		## FFT
-		rawSpectraNext = PulsarEngineRawWindow(dataNext, window, LFFT)
+		rawSpectraNext = fftEngine(dataNext)
 		
 		## S-K flagging
 		flag = GenerateMask(rawSpectra)
@@ -474,67 +488,32 @@ def main(args):
 		ff2 = 1.0*(LFFT - weight2.sum()) / LFFT
 		
 		## Dedisperse
-		rawSpectraDedispersed = numpy.zeros(rawSpectra.shape, dtype=rawSpectra.dtype)
-		for i in xrange(1, LFFT-1):
-			j = 0
-			drxtOut, rawSpectraOut = coherent(drxt[j,::LFFT], rawSpectra[j,i,:], spectraFreq1[i], 1.0*srate/LFFT, DM, 
-										previousTime=drxtPrev[j,::LFFT], previousData=rawSpectraPrev[j,i,:], 
-										nextTime=drxtNext[j,::LFFT], nextData=rawSpectraNext[j,i,:])
-			rawSpectraDedispersed[j,i,:] = rawSpectraOut
-			
-			j = 1
-			drxtOut, rawSpectraOut = coherent(drxt[j,::LFFT], rawSpectra[j,i,:], spectraFreq1[i], 1.0*srate/LFFT, DM, 
-										previousTime=drxtPrev[j,::LFFT], previousData=rawSpectraPrev[j,i,:], 
-										nextTime=drxtNext[j,::LFFT], nextData=rawSpectraNext[j,i,:])
-			rawSpectraDedispersed[j,i,:] = rawSpectraOut
-			
-			j = 2
-			drxtOut, rawSpectraOut = coherent(drxt[j,::LFFT], rawSpectra[j,i,:], spectraFreq2[i], 1.0*srate/LFFT, DM, 
-										previousTime=drxtPrev[j,::LFFT], previousData=rawSpectraPrev[j,i,:], 
-										nextTime=drxtNext[j,::LFFT], nextData=rawSpectraNext[j,i,:])
-			rawSpectraDedispersed[j,i,:] = rawSpectraOut
-			
-			j = 3
-			drxtOut, rawSpectraOut = coherent(drxt[j,::LFFT], rawSpectra[j,i,:], spectraFreq2[i], 1.0*srate/LFFT, DM, 
-										previousTime=drxtPrev[j,::LFFT], previousData=rawSpectraPrev[j,i,:], 
-										nextTime=drxtNext[j,::LFFT], nextData=rawSpectraNext[j,i,:])
-			rawSpectraDedispersed[j,i,:] = rawSpectraOut
-			
+		drxtOut, rawSpectraDedispersed = MultiChannelCD(drxt[:,::LFFT], rawSpectra, spectraFreq1, spectraFreq2, 1.0*srate/LFFT, DM, 
+												drxtPrev[:,::LFFT], rawSpectraPrev, drxtNext[:,::LFFT], rawSpectraNext)
+												
+		## Update the state variables used to get the CD process continuous
 		rawSpectraPrev = rawSpectra
 		drxtPrev = drxt
 		
 		rawSpectra = rawSpectraNext
 		drxt = drxtNext
 		
-		if first:
-			beginDateNew = ephem.Date(astro.unix_to_utcjd(drxtOut[0]) - astro.DJD_OFFSET)
-			beginTimeNew = beginDate.datetime()
-			mjdNew = astro.jd_to_mjd(astro.unix_to_utcjd(drxtOut[0]))
-			
-			print 'MJD shifted by %.3f ms' % ((mjdNew-mjd)*24*3600*1000,)
-			
-			for j in xrange(2):
-				pfu_out[j].hdr.date_obs = str(beginTimeNew.strftime("%Y-%m-%dT%H:%M:%S"))     
-				pfu_out[j].hdr.MJD_epoch = pfu.get_ld(mjdNew)
-				
-			first = False
-				
 		## Detect power
 		data = reduceEngine(rawSpectraDedispersed)
 		
 		## Optimal data scaling
-		bzero, bscale, data = OptimizeDataLevels(data, LFFT)
+		bzero, bscale, bdata = OptimizeDataLevels(data, LFFT)
 		
 		## Polarization mangling
 		bzero1 = bzero[:nPols,:].T.ravel()
 		bzero2 = bzero[nPols:,:].T.ravel()
 		bscale1 = bscale[:nPols,:].T.ravel()
 		bscale2 = bscale[nPols:,:].T.ravel()
-		data1 = data[:nPols,:].T.ravel()
-		data2 = data[nPols:,:].T.ravel()
+		bdata1 = bdata[:nPols,:].T.ravel()
+		bdata2 = bdata[nPols:,:].T.ravel()
 		
 		## Write the spectra to the PSRFITS files
-		for j,sp,bz,bs,wt in zip(range(2), (data1, data2), (bzero1, bzero2), (bscale1, bscale2), (weight1, weight2)):
+		for j,sp,bz,bs,wt in zip(range(2), (bdata1, bdata2), (bzero1, bzero2), (bscale1, bscale2), (weight1, weight2)):
 			## Time
 			pfu_out[j].sub.offs = (pfu_out[j].tot_rows)*pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt+pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt/2.0
 			

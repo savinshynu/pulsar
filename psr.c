@@ -21,6 +21,9 @@
 #define PI 3.1415926535898
 #define imaginary _Complex_I
 
+// Dispersion constant in MHz^2 s / pc cm^-3
+#define DCONST (double) 4.148808e3
+
 
 /*
  Load in FFTW wisdom.  Based on the read_wisdom function in PRESTO.
@@ -576,6 +579,588 @@ Input arguments are:\n\
 \n\
 Outputs:\n\
  * weight: 2-D numpy.float32 (stands by channels) of data weights\n\
+");
+
+
+
+/*
+  getCoherentSampleSize - Estimate the number of samples needed to 
+  successfully apply coherent dedispersion to a data stream.
+*/
+
+long getCoherentSampleSize(double centralFreq, double sampleRate, double DM) {
+	double delayBand;
+	long samples;
+	
+	delayBand = DM*DCONST * (pow(1e6/(centralFreq-sampleRate/2.0), 2) - pow(1e6/(centralFreq+sampleRate/2.0), 2));
+	delayBand *= sampleRate;
+	samples = (long) ceil( log(delayBand)/log(2.0) );
+	if( samples < 0 ) {
+		samples = 0;
+	}
+	samples = (long) 1<<samples;
+	samples *= 2;
+	
+	return samples;
+}
+
+
+/*
+ getFFTFreqs - Compute the frequencies for a collection of FFT channels.  Based on
+ the numpy.fft.fftfreqs function.
+*/
+
+void getFFTFreqs(long LFFT, double centralFreq, double sampleRate, double *freq) {
+	long i, N;
+	double val;
+	
+	N = (LFFT-1) / 2 + 1;
+	val = sampleRate / (double) LFFT;
+	
+	for(i=0; i<N; i++) {
+		// Relative frequency
+		*(freq + i) = i * val;
+		
+		// Add in the center
+		*(freq + i) += centralFreq;
+	}
+	
+	for(i=-(LFFT/2); i<0; i++) {
+		// Relative frequency
+		*(freq + i + (LFFT/2) + N) = i*val;
+		
+		// Add in the center
+		*(freq + i + (LFFT/2) + N) += centralFreq;
+	}
+}
+
+
+/*
+ chirpFunction - Chirp function for coherent dedispersion for a given set of 
+ frequencies (in Hz).  Based on Equation (6) of "Pulsar Observations II -- 
+ Coherent Dedispersion, Polarimetry, and Timing" By Stairs, I. H.
+*/
+
+void chirpFunction(long LFFT, double *freq, double DM, float complex *chirp) {
+	int i;
+	double *freqMHz;
+	double fMHz0, fMHz1;
+	
+	// Allocate the space for freqMHz, and fMHz1
+	freqMHz = (double *) malloc(LFFT*sizeof(double));
+	
+	// Compute the frequencies in MHz and find the average frequency
+	fMHz0 = 0.0;
+	for(i=0; i<LFFT; i++) {
+		*(freqMHz + i) = *(freq + i) / 1e6;
+		fMHz0 += *(freqMHz+ i);
+	}
+	fMHz0 /= (double) LFFT;
+	
+	// Compute the chirp
+	for(i=0; i<LFFT; i++) {
+		fMHz1 = *(freqMHz + i) - fMHz0;
+		*(chirp + i) = cexp(-2.0*imaginary*PI*DCONST*1e6 * DM*fMHz1*fMHz1 / (fMHz0*fMHz0* *(freqMHz + i)));
+	}
+	
+	// Cleanup
+	free(freqMHz);
+}
+
+
+static PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) {
+	PyObject *drxTime, *drxData, *spectraFreq1, *spectraFreq2, *prevTime, *prevData, *nextTime, *nextData, *drxDataF;
+	PyArrayObject *time, *data, *freq1, *freq2, *pTime, *pData, *nTime, *nData, *timeF, *dataF;
+	double sRate, DM;
+
+	long i, j, k, l, nStand, nChan, nFFT;
+	
+	static char *kwlist[] = {"time", "rawSpectra", "freq1", "freq2", "sampleRate", "DM", "prevTime", "prevRawSpectra", "nextTime", "nextRawSpectra", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OOOOddOOOO", kwlist, &drxTime, &drxData, &spectraFreq1, &spectraFreq2, &sRate, &DM, &prevTime, &prevData, &nextTime, &nextData)) {
+		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
+		return NULL;
+	}
+	
+	// Bring the data into C and make it usable
+	time = (PyArrayObject *) PyArray_ContiguousFromObject(drxTime, NPY_FLOAT64, 2, 2);
+	data = (PyArrayObject *) PyArray_ContiguousFromObject(drxData, NPY_COMPLEX64, 3, 3);
+	freq1 = (PyArrayObject *) PyArray_ContiguousFromObject(spectraFreq1, NPY_FLOAT64, 1, 1);
+	freq2 = (PyArrayObject *) PyArray_ContiguousFromObject(spectraFreq2, NPY_FLOAT64, 1, 1);
+	pTime = (PyArrayObject *) PyArray_ContiguousFromObject(prevTime, NPY_FLOAT64, 2, 2);
+	pData = (PyArrayObject *) PyArray_ContiguousFromObject(prevData, NPY_COMPLEX64, 3, 3);
+	nTime = (PyArrayObject *) PyArray_ContiguousFromObject(nextTime, NPY_FLOAT64, 2, 2);
+	nData = (PyArrayObject *) PyArray_ContiguousFromObject(nextData, NPY_COMPLEX64, 3, 3);
+	
+	// Get the properties of the data
+	nStand = (long) data->dimensions[0];
+	nChan  = (long) data->dimensions[1];
+	nFFT   = (long) data->dimensions[2];
+	
+	// Validate
+	if( time->dimensions[0] != nStand ) {
+		PyErr_Format(PyExc_ValueError, "time array has different stand dimension than rawSpectra");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	if( time->dimensions[1] != nFFT ) {
+		PyErr_Format(PyExc_ValueError, "time array has different FFT count dimension than rawSpectra");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	
+	if( freq1->dimensions[0] != nChan ) {
+		PyErr_Format(PyExc_ValueError, "freq1 array has different dimensions than rawSpectra");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	if( freq2->dimensions[0] != nChan ) {
+		PyErr_Format(PyExc_ValueError, "freq2 array has different dimensions than rawSpectra");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	
+	if( time->dimensions[0] != pTime->dimensions[0] ) {
+		PyErr_Format(PyExc_ValueError, "prevTime array has different stand dimension than time");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	if( time->dimensions[1] != pTime->dimensions[1] ) {
+		PyErr_Format(PyExc_ValueError, "prevTime array has different FFT count dimension than time");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	if( time->dimensions[0] != nTime->dimensions[0] ) {
+		PyErr_Format(PyExc_ValueError, "nextTime array has different stand dimension than time");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	if( time->dimensions[1] != nTime->dimensions[1] ) {
+		PyErr_Format(PyExc_ValueError, "nextTime array has different FFT count dimension than time");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	
+	if( data->dimensions[0] != pData->dimensions[0] ) {
+		PyErr_Format(PyExc_ValueError, "prevRawSpectra array has different stand dimension than rawSpectra");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	if( data->dimensions[1] != pData->dimensions[1] ) {
+		PyErr_Format(PyExc_ValueError, "prevRawSpectra array has different channel dimension than rawSpectra");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	if( data->dimensions[2] != pData->dimensions[2] ) {
+		PyErr_Format(PyExc_ValueError, "prevRawSpectra array has different FFT count dimension than rawSpectra");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	if( data->dimensions[0] != nData->dimensions[0] ) {
+		PyErr_Format(PyExc_ValueError, "nextRawSpectra array has different stand dimension than rawSpectra");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	if( data->dimensions[1] != nData->dimensions[1] ) {
+		PyErr_Format(PyExc_ValueError, "nextRawSpectra array has different channel dimension than rawSpectra");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	if( data->dimensions[2] != nData->dimensions[2] ) {
+		PyErr_Format(PyExc_ValueError, "nextRawSpectra array has different FFT count dimension than rawSpectra");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	
+	// Find out how large the output arrays needs to be and initialize then
+	npy_intp dimsT[2];
+	dimsT[0] = (npy_intp) nStand;
+	dimsT[1] = (npy_intp) nFFT;
+	timeF = (PyArrayObject *) PyArray_SimpleNew(2, dimsT, NPY_FLOAT64);
+	if(timeF == NULL) {
+		PyErr_Format(PyExc_MemoryError, "Cannot create output time array");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		return NULL;
+	}
+	PyArray_FILLWBYTE(timeF, 0);
+	
+	npy_intp dimsD[3];
+	dimsD[0] = (npy_intp) nStand;
+	dimsD[1] = (npy_intp) nChan;
+	dimsD[2] = (npy_intp) nFFT;
+	dataF = (PyArrayObject*) PyArray_SimpleNew(3, dimsD, NPY_COMPLEX64);
+	if(dataF == NULL) {
+		PyErr_Format(PyExc_MemoryError, "Cannot create output data array");
+		Py_XDECREF(time);
+		Py_XDECREF(data);
+		Py_XDECREF(freq1);
+		Py_XDECREF(freq2);
+		Py_XDECREF(pTime);
+		Py_XDECREF(pData);
+		Py_XDECREF(nTime);
+		Py_XDECREF(nData);
+		Py_XDECREF(timeF);
+		return NULL;
+	}
+	PyArray_FILLWBYTE(dataF, 0);
+	
+	// Get access to the frequency information
+	double *cf1, *cf2;
+	cf1 = (double *) freq1->data;
+	cf2 = (double *) freq2->data;
+	
+	// Create the FFTW plans
+	long N;
+	fftwf_complex *inP;
+	fftwf_plan *plansF, *plansB;
+	plansF = (fftwf_plan *) malloc(nStand*nChan*sizeof(fftwf_plan));
+	plansB = (fftwf_plan *) malloc(nStand*nChan*sizeof(fftwf_plan));
+	for(j=0; j<nChan; j++) {
+		for(i=0; i<nStand; i++) {
+			//Compute the number of FFT channels to use
+			if( i/2 == 0 ) {
+				N = getCoherentSampleSize(*(cf1 + j), sRate, DM);
+			} else {
+				N = getCoherentSampleSize(*(cf2 + j), sRate, DM);
+			}
+			
+			inP = (fftwf_complex *) fftwf_malloc(N*sizeof(fftwf_complex));
+			*(plansF + nChan*i + j) = fftwf_plan_dft_1d(N, inP, inP, FFTW_FORWARD, FFTW_ESTIMATE);
+			*(plansB + nChan*i + j) = fftwf_plan_dft_1d(N, inP, inP, FFTW_BACKWARD, FFTW_ESTIMATE);
+			fftwf_free(inP);
+		}
+	}
+	
+	// Go!
+	long nSets, start, stop, secStart;
+	double cFreq, *rf, *inT;
+	float complex tempF;
+	float complex *chirp;
+	double *t0, *t1, *t2, *tF;
+	float complex *d0, *d1, *d2, *dF;
+	
+	fftwf_complex *in;
+	
+	t0 = (double *) pTime->data;
+	d0 = (float complex *) pData->data;
+	t1 = (double *) time->data;
+	d1 = (float complex *) data->data;
+	t2 = (double *) nTime->data;
+	d2 = (float complex *) nData->data;
+	tF = (double *) timeF->data;
+	dF = (float complex *) dataF->data;
+	
+	
+	#ifdef _OPENMP
+		#pragma omp parallel default(shared) private(secStart, i, j, k, l, N, nSets, start, stop, cFreq, rf, chirp, in, inT, tempF)
+	#endif
+	{
+		#ifdef _OPENMP
+			#pragma omp for schedule(dynamic)
+		#endif
+		for(j=0; j<nChan; j++) {
+			for(i=0; i<nStand; i++) {
+				// Section start offset
+				secStart = nFFT*nChan*i + nFFT*j;
+				
+				// Get the correct center frequency to use
+				if( i/2 == 0 ) {
+					cFreq = *(cf1 + j);
+				} else {
+					cFreq = *(cf2 + j);
+				}
+				
+				//Compute the number of FFT channels to use
+				N = getCoherentSampleSize(cFreq, sRate, DM);
+				
+				// Compute the number of windows we need to use for CD
+				nSets = nFFT / N;
+				
+				// Compute the relative frequencies for this channel
+				rf = (double *) malloc(N*sizeof(double));
+				getFFTFreqs(N, cFreq, sRate, rf);
+				
+				// Compute the chirp function
+				chirp = (float complex *) malloc(N*sizeof(float complex));
+				chirpFunction(N, rf, DM, chirp);
+				
+				// Create the time array
+				inT = (double *) malloc(N*sizeof(double));
+				
+				// Create the FFTW array
+				in = (fftwf_complex *) fftwf_malloc(N*sizeof(fftwf_complex));
+				
+				// Loop over the sets
+				for(l=0; l<2*nSets+1; l++) {
+					start = l*N/2 - N/4;
+					stop = start + N;
+					
+					// Load in the data
+					if( start < 0 ) {
+						// "Previous" buffering
+						for(k=0; k<-start; k++) {
+							*(inT + k) = *(t0 + nFFT*i + k + nFFT + start);
+							in[k][0] = creal(*(d0 + secStart + k + nFFT + start));
+							in[k][1] = cimag(*(d0 + secStart + k + nFFT + start));
+						}
+						
+						// Current data
+						for(k=-start; k<N; k++) {
+							*(inT + k) = *(t1 + nFFT*i + k + start);
+							in[k][0] = creal(*(d1 + secStart + k + start));
+							in[k][1] = cimag(*(d1 + secStart + k + start));
+						}
+						
+					} else if( stop > nFFT ) {
+						// Current data
+						if( start < nFFT ) {
+							for(k=0; k<nFFT-start; k++) {
+								*(inT + k) = *(t1 + nFFT*i + k + start);
+								in[k][0] = creal(*(d1 + secStart + k + start));
+								in[k][1] = cimag(*(d1 + secStart + k + start));
+							}
+						}
+						
+						// "Next" buffering
+						for(k=nFFT-start; k<N; k++) {
+							*(inT + k) = *(t2 + nFFT*i + k - nFFT + start);
+							in[k][0] = creal(*(d2 + secStart + k - nFFT + start));
+							in[k][1] = cimag(*(d2 + secStart + k - nFFT + start));
+						}
+						
+					} else {
+						// Current data
+						for(k=0; k<N; k++) {
+							*(inT + k) = *(t1 + nFFT*i + k + start);
+							in[k][0] = creal(*(d1 + secStart + k + start));
+							in[k][1] = cimag(*(d1 + secStart + k + start));
+						}
+						
+					}
+					
+					// Forward FFT
+					fftwf_execute_dft(*(plansF + nChan*i + j), in, in);
+					
+					// Chirp
+					for(k=0; k<N; k++) {
+						tempF = in[k][0] + imaginary*in[k][1];
+						tempF /= N;
+						tempF *= *(chirp + k);
+						in[k][0] = creal(tempF);
+						in[k][1] = cimag(tempF);
+					}
+					
+					// Backward FFT
+					fftwf_execute_dft(*(plansB + nChan*i + j), in, in);
+					
+					// Save
+					start = l*N/2;
+					stop = start + N/2;
+					if( stop > nFFT ) {
+						stop = nFFT;
+					}
+					
+					for(k=start; k<stop; k++) {
+						dimsT[1] = (npy_intp) k;
+						dimsD[2] = (npy_intp) k;
+						if( j == 0 ) {
+							// We only need to do this once for each stand since timeF is 2-D (stands by FFT windows)
+							*(tF + nFFT*i + k) =  *(inT + k - start + N/4);
+						}
+						*(dF + secStart + k) = in[k - start + N/4][0] + imaginary*in[k - start + N/4][1];
+					}
+					
+					if( stop == nFFT ) {
+						break;
+					}
+					
+				}
+				
+				// Cleanup
+				fftwf_free(in);
+				free(inT);
+				free(chirp);
+				free(rf);
+			}
+		}
+	}
+	
+	// Cleanup
+	for(j=0; j<nChan; j++) {
+		for(i=0; i<nStand; i++) {
+			fftwf_destroy_plan(*(plansF + nChan*i + j));
+			fftwf_destroy_plan(*(plansB + nChan*i + j));
+		}
+	}
+	free(plansF);
+	free(plansB);
+	
+	Py_XDECREF(time);
+	Py_XDECREF(data);
+	Py_XDECREF(freq1);
+	Py_XDECREF(freq2);
+	Py_XDECREF(pTime);
+	Py_XDECREF(pData);
+	Py_XDECREF(nTime);
+	Py_XDECREF(nData);
+	
+	drxDataF = Py_BuildValue("(OO)", PyArray_Return(timeF), PyArray_Return(dataF));
+	Py_XDECREF(timeF);
+	Py_XDECREF(dataF);
+
+	return drxDataF;
+}
+
+PyDoc_STRVAR(MultiChannelCD_doc, \
+"Given the output of one of the 'PulsarEngine' functions and information about\n\
+the time and frequencies, apply coherent dedispersion to the data and return a\n\
+two-element tuple giving the time and dedispersed data.\n\
+\n\
+Input arguments are:\n\
+  * time - 2-D numpy.float64 (stands by samples) array of times for the input\n\
+    data\n\
+  * rawSpectra - 3-D numpy.complex64 (stands by channels by samples) of raw\n\
+    spectra data generated by 'PulsarEngineRaw' or 'PulsarEngineWindow'\n\
+  * freq1 - 1-D numpy.float64 (channels) array of frequencies for the first\n\
+    set of two stands in Hz\n\
+  * freq2 - 1-D numpy.float64 (channels) array of frequency for the second\n\
+    set of two stands in Hz\n\
+  * sampleRate - Channelized data sample rate in Hz\n\
+  * DM - dispersion measure in pc cm^-3 to dedisperse at\n\
+  * prevTime - 2-D numpy.float64 (stands by samples) array of times for the\n\
+    previously input data\n\
+  * prevRawSpectra - 3-D numpy.complex64 (stands by channels by samples) of\n\
+    the previously input data\n\
+  * nextTime - 2-D numpy.float64 (stands by samples) array of times for the\n\
+    following input data\n\
+  * prevRawSpectra - 3-D numpy.complex64 (stands by channels by samples) of\n\
+    the following input data\n\
+\n\
+Outputs:\n\
+  * dedispTime - 2-D numpy.float64 (stands by samples) array of times for\n\
+    the coherently dedispersed data\n\
+  * dedispRawSpectra - 3-D numpy.complex64 (stands by channels by samples) of\n\
+    the coherently dedispersed spectra\n\
+\n\
+.. note::\n\
+\tThere are a few things that look a little strange here.  First, the\n\
+\tsample rate specified is that of the output spectra.  This is related\n\
+\tto the input data range and channel count via <input rate> / <channel\n\
+\tcount>.  Second, the time/prevTime/nextTime, etc. variables might be\n\
+\ta little confusing.  Consider the following time/data flow in a file:\n\
+\t  t0/d0, t1/d1, t2/d2, t3/d3, ...\n\
+\tFor the first call to MultiDisp() the arguments are:\n\
+\t  * t1/d1 are time/rawSpectra\n\
+\t  * t0/d0 are prevTime/prevRawSpectra\n\
+\t  * t2/d2 are nextTime/nextRawSpectra\n\
+\tand for the subsequent call to MultiDisp() they are:\n\
+\t  * t2/d2 are time/rawSpectra\n\
+\t  * t1/d1 are prevTime/prevRawSpectra\n\
+\t  * t3/d3 are nextTime/nextRawSpectra\n\
 ");
 
 
@@ -1218,6 +1803,7 @@ static PyMethodDef SpecMethods[] = {
 	{"PhaseRotator",           (PyCFunction) PhaseRotator,           METH_VARARGS,               PhaseRotator_doc           },
 	{"ComputeSKMask",          (PyCFunction) ComputeSKMask,          METH_VARARGS,               ComputeSKMask_doc          },
 	{"ComputePseudoSKMask",    (PyCFunction) ComputePseudoSKMask,    METH_VARARGS,               ComputePseudoSKMask_doc    },
+	{"MultiChannelCD",         (PyCFunction) MultiChannelCD,         METH_VARARGS,               MultiChannelCD_doc         },
 	{"CombineToIntensity",     (PyCFunction) CombineToIntensity,     METH_VARARGS,               CombineToIntensity_doc     }, 
 	{"CombineToLinear",        (PyCFunction) CombineToLinear,        METH_VARARGS,               CombineToLinear_doc        }, 
 	{"CombineToCircular",      (PyCFunction) CombineToCircular,      METH_VARARGS,               CombineToCircular_doc      }, 
@@ -1241,6 +1827,8 @@ The functions defined in this module are:\n\
   * ComputeSKMask - Given the output of PulsarEngineRaw compute a mask for\n\
     using spectral kurtosis\n\
   * ComputePseudoSKMask - Similar to ComputeSKMask but for DR spectrometer data\n\
+  * MultiChannelCD - Given the output of PulsarEngineRaw apply coherent \n\
+    dedispersion to the data\n\
   * CombineToIntensity - Given the output of PulsarEngineRaw compute the total\n\
     intensity for both tunings\n\
   * CombineToLinear - Given the output of PulsarEngineRaw compute XX and YY\n\
@@ -1269,7 +1857,7 @@ PyMODINIT_FUNC init_psr(void) {
 	import_array();
 	
 	// Version and revision information
-	PyModule_AddObject(m, "__version__", PyString_FromString("0.4"));
+	PyModule_AddObject(m, "__version__", PyString_FromString("0.5"));
 	PyModule_AddObject(m, "__revision__", PyString_FromString("$Rev$"));
 	
 	// LSL FFTW Wisdom

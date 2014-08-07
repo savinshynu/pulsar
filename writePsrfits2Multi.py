@@ -382,7 +382,7 @@ def main(args):
 			pfo.basefilename = "%s_b%it%i" % (config['output'], beam, t)
 			pfo.filenum = 0
 			pfo.tot_rows = pfo.N = pfo.T = pfo.status = pfo.multifile = 0
-			pfo.rows_per_file = 8192
+			pfo.rows_per_file = 32768
 			
 			## Frequency, bandwidth, and channels
 			if t == 1:
