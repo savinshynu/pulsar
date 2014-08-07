@@ -408,18 +408,18 @@ def main(args):
 		data = reduceEngine(spectra)
 		
 		## Optimal data scaling
-		bzero, bscale, data = OptimizeDataLevels(data, LFFT)
+		bzero, bscale, bdata = OptimizeDataLevels(data, LFFT)
 		
 		## Polarization mangling
 		bzero1 = bzero[:nPols,:].T.ravel()
 		bzero2 = bzero[nPols:,:].T.ravel()
 		bscale1 = bscale[:nPols,:].T.ravel()
 		bscale2 = bscale[nPols:,:].T.ravel()
-		data1 = data[:nPols,:].T.ravel()
-		data2 = data[nPols:,:].T.ravel()
+		bdata1 = bdata[:nPols,:].T.ravel()
+		bdata2 = bdata[nPols:,:].T.ravel()
 		
 		## Write the spectra to the PSRFITS files
-		for j,sp,bz,bs,wt in zip(range(2), (data1, data2), (bzero1, bzero2), (bscale1, bscale2), (weight1, weight2)):
+		for j,sp,bz,bs,wt in zip(range(2), (bdata1, bdata2), (bzero1, bzero2), (bscale1, bscale2), (weight1, weight2)):
 			## Time
 			pfu_out[j].sub.offs = (pfu_out[j].tot_rows)*pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt+pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt/2.0
 			
