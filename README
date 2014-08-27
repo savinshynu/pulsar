@@ -58,3 +58,9 @@ data.py
 -------
 External file from Commissioning/DRX/HDF5 used by writeHDF5FromPsrfits.py
 for building the HDF5 files.
+
+drx2drxi.py
+-----------
+Script to take a standard DRX file and convert it to two polarization interlaced
+DRX files, one for each tuning.  The interlaced DRX format is compatiable with
+the dspsr suite.
