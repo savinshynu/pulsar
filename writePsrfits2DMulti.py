@@ -26,20 +26,21 @@ import lsl.astro as astro
 import lsl.common.progress as progress
 from lsl.common.dp import fS
 from lsl.statistics import kurtosis
+from lsl.misc.dedispersion import getCoherentSampleSize
 
 from _psr import *
 
 
 def usage(exitCode=None):
-	print """writePrsfits2Multi.py - Read in several DRX files observed simultaneously
-with different beams, create a collection of PSRFITS files.
+	print """writePrsfits2DMulti.py - Read in several DRX files observed simultaneously
+with different beams, create a collection of coherently dedispersed PSRFITS files.
 
-Usage: writePsrfits2Multi.py [OPTIONS] file
+Usage: writePsrfits2DMulti.py [OPTIONS] DM file
 
 Options:
 -h, --help                  Display this help information
 -o, --output                Output file basename
--c, --nchan                 Set FFT length (default = 4096)
+-c, --nchan                 Set FFT length (default = 512)
 -p, --no-sk-flagging        Disable on-the-fly SK flagging of RFI
 -n, --no-summing            Do not sum polarizations
 -i, --circularize           Convert data to RR/LL
@@ -48,6 +49,7 @@ Options:
 -r, --ra                    Right Ascension (HH:MM:SS.SS, J2000)
 -d, --dec                   Declination (sDD:MM:SS.S, J2000)
 -4, --4bit-data             Save the spectra in 4-bit mode (default = 8-bit)
+-w, --disable-window        Disable time-domain data windowing
 -t, --subsample-correction  Enable sub-sample delay correction
 
 Note:  If a source name is provided and the RA or declination is not, the script
@@ -67,7 +69,7 @@ def parseOptions(args):
 	# Command line flags - default values
 	config['output'] = None
 	config['args'] = []
-	config['nchan'] = 4096
+	config['nchan'] = 512
 	config['useSK'] = True
 	config['sumPols'] = True
 	config['circularize'] = False
@@ -76,11 +78,12 @@ def parseOptions(args):
 	config['ra'] = None
 	config['dec'] = None
 	config['dataBits'] = 8
+	config['enableWindow'] = True
 	config['enableSubSample'] = False
 	
 	# Read in and process the command line flags
 	try:
-		opts, args = getopt.getopt(args, "hc:pniks:o:r:d:4t", ["help", "nchan=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode", "subsample-correction"])
+		opts, args = getopt.getopt(args, "hc:pniks:o:r:d:4wt", ["help", "nchan=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode", "disable-window", "subsample-correction"])
 	except getopt.GetoptError, err:
 		# Print help information and exit:
 		print str(err) # will print something like "option -a not recognized"
@@ -113,6 +116,8 @@ def parseOptions(args):
 			config['output'] = value
 		elif opt in ('-4', '--4bit-mode'):
 			config['dataBits'] = 4
+		elif opt in ('-w', '--disable-window'):
+			config['enableWindow'] = False
 		elif opt in ('-t', '--subsample-correction'):
 			config['enableSubSample'] = True
 		else:
@@ -183,11 +188,13 @@ def main(args):
 	# Sub-integration block size
 	nsblk = 4096
 	
-	filenames = config['args']
+	DM = float(config['args'][0])
+	filenames = config['args'][1:]
 	filenames.sort()
 	
 	startTimes = []
 	nFrames = []
+	freqRanges = []
 	for filename in filenames:
 		fh = open(filename, "rb")
 		# Find the good data (non-zero decimation)
@@ -205,6 +212,9 @@ def main(args):
 		for i in xrange(16):
 			junkFrame = drx.readFrame(fh)
 			timeTags.append(junkFrame.data.timeTag)
+			freqRange = (junkFrame.getCentralFreq() - srate/2.0, junkFrame.getCentralFreq() + srate/2.0)
+			if freqRange not in freqRanges:
+				freqRanges.append( freqRange )
 		fh.seek(-16*drx.FrameSize, 1)
 		
 		i = 0
@@ -277,6 +287,21 @@ def main(args):
 		sys.exit()
 	print " "
 	
+	# Parameter validation
+	print "Samples Needed for Coherent Dedispersion:"
+	cdParamFailed = False
+	for freqRange in freqRanges:
+		cdSamples0 = getCoherentSampleSize(freqRange[0], 1.0*srate/LFFT, DM)
+		cdSamples1 = getCoherentSampleSize(freqRange[1], 1.0*srate/LFFT, DM)
+		if cdSamples0 > nsblk or cdSamples1 > nsblk:
+			cdParamFailed = True
+			
+		print "  %.3f MHz: %i sub-integrations needed" % (freqRange[0]/1e6, cdSamples0)
+		print "  %.3f MHz: %i sub-integrations needed" % (freqRange[1]/1e6, cdSamples1)
+	print " "
+	if cdParamFailed:
+		raise RuntimeError("Too few samples for coherent dedispersion.  Considering increasing the number of channels.")
+		
 	for c,filename,frameOffset,sampleOffset,tickOffset in zip(range(len(filenames)), filenames, frameOffsets, sampleOffsets, tickOffsets):
 		fh = open(filename, "rb")
 		nFramesFile = os.path.getsize(filename) / drx.FrameSize
@@ -340,6 +365,11 @@ def main(args):
 				centralFreq2 = junkFrame.getCentralFreq()
 		fh.seek(-4*drx.FrameSize, 1)
 		
+		## Coherent Dedispersion/Phase Rotator Setup
+		timesPerFrame = numpy.arange(4096, dtype=numpy.float64)/srate
+		spectraFreq1 = numpy.fft.fftshift( numpy.fft.fftfreq(LFFT, d=1.0/srate) ) + centralFreq1
+		spectraFreq2 = numpy.fft.fftshift( numpy.fft.fftfreq(LFFT, d=1.0/srate) ) + centralFreq2
+		
 		# File summary
 		print "Input Filename: %s (%i of %i)" % (filename, c+1, len(filenames))
 		print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
@@ -351,6 +381,8 @@ def main(args):
 		print "Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol)
 		print "---"
 		print "Using FFTW Wisdom? %s" % useWisdom
+		print "DM: %.4f pc / cm^3" % DM
+		print "Samples Needed: %i, %i to %i, %i" % (getCoherentSampleSize(centralFreq1-srate/2, 1.0*srate/LFFT, DM), getCoherentSampleSize(centralFreq2-srate/2, 1.0*srate/LFFT, DM), getCoherentSampleSize(centralFreq1+srate/2, 1.0*srate/LFFT, DM), getCoherentSampleSize(centralFreq2+srate/2, 1.0*srate/LFFT, DM))
 		
 		# Create the output PSRFITS file(s)
 		pfu_out = []
@@ -376,6 +408,12 @@ def main(args):
 		else:
 			OptimizeDataLevels = OptimizeDataLevels8Bit
 			
+		# Adjust the time for the padding used for coherent dedispersion
+		print "MJD shifted by %.3f ms to account for padding" %  (nsblk*LFFT/srate*1000.0,)
+		beginDate = ephem.Date(astro.unix_to_utcjd(junkFrame.getTime() + sampleOffset*spSkip/fS + tickOffset/fS + nsblk*LFFT/srate) - astro.DJD_OFFSET)
+		beginTime = beginDate.datetime()
+		mjd = astro.jd_to_mjd(astro.unix_to_utcjd(junkFrame.getTime() + nsblk*LFFT/srate))
+		
 		for t in xrange(1, 2+1):
 			## Basic structure and bounds
 			pfo = pfu.psrfits()
@@ -416,6 +454,9 @@ def main(args):
 			pfo.hdr.date_obs = str(beginTime.strftime("%Y-%m-%dT%H:%M:%S"))     
 			pfo.hdr.MJD_epoch = pfu.get_ld(mjd)
 			
+			## Coherent dedispersion information
+			pfo.hdr.chan_dm = DM
+			
 			## Setup the subintegration structure
 			pfo.sub.tsubint = pfo.hdr.dt*pfo.hdr.nsblk
 			pfo.sub.bytes_per_subint = pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk*pfo.hdr.nbits/8
@@ -452,10 +493,13 @@ def main(args):
 		# Find out how many frames per tuning/polarization that corresponds to.
 		chunkSize = nsblk*LFFT/4096
 		
-		# Frequency arrays for use with the phase rotator
-		freq1 = centralFreq1 + numpy.fft.fftshift( numpy.fft.fftfreq(LFFT, d=1.0/srate) )
-		freq2 = centralFreq2 + numpy.fft.fftshift( numpy.fft.fftfreq(LFFT, d=1.0/srate) )
-		
+		# Evaluate the window function, if needed
+		if config['enableWindow']:
+			window = numpy.hamming(LFFT)
+			fftEngine = lambda x: PulsarEngineRawWindow(x, window, LFFT=LFFT)
+		else:
+			fftEngine = lambda x: PulsarEngineRaw(x, LFFT=LFFT)
+			
 		# Calculate the SK limites for weighting
 		if config['useSK']:
 			skLimits = kurtosis.getLimits(4.0, 1.0*nsblk)
@@ -477,12 +521,127 @@ def main(args):
 		# Go!
 		done = False
 		siCount = 0
-		while True:
-			## Read in the data
-			data = numpy.zeros((4, 4096*chunkSize+4096), dtype=numpy.complex64)
-			count = [0 for i in xrange(data.shape[0])]
+		
+		## Read in the first data block
+		dataPrev = numpy.zeros((4, 4096*chunkSize+4096), dtype=numpy.complex64)
+		drxtPrev = numpy.zeros(dataPrev.shape, dtype=numpy.float64)
+		countPrev = [0 for i in xrange(dataPrev.shape[0])]
+		
+		### Primary read
+		for i in xrange(4*chunkSize):
+			try:
+				frame = drx.readFrame(fh)
+			except errors.eofError, errors.syncError:
+				done = True
+				break
+				
+			beam,tune,pol = frame.parseID()
+			aStand = 2*(tune-1) + pol
 			
-			## Primary read
+			if ttFlow[aStand] + ttStep != frame.data.timeTag:
+				print 'Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, frame.data.timeTag/fS, ttFlow[aStand]/fS, ttStep/fS)
+			ttFlow[aStand] = frame.data.timeTag
+			
+			dataPrev[aStand, countPrev[aStand]*4096:(countPrev[aStand]+1)*4096] = frame.data.iq
+			drxtPrev[aStand, countPrev[aStand]*4096:(countPrev[aStand]+1)*4096] = frame.getTime() + timesPerFrame
+			countPrev[aStand] += 1
+			
+		### Extra frame for the sample offset - this doesn't update the timetag flow 
+		### checker but will look for errors anyways
+		for i in xrange(4):
+			try:
+				frame = drx.readFrame(fh)
+			except errors.eofError, errors.syncError:
+				done = True
+				break
+				
+			beam,tune,pol = frame.parseID()
+			aStand = 2*(tune-1) + pol
+			
+			if ttFlow[aStand] + ttStep != frame.data.timeTag:
+				print 'Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, frame.data.timeTag/fS, ttFlow[aStand]/fS, ttStep/fS)
+				
+			dataPrev[aStand, countPrev[aStand]*4096:(countPrev[aStand]+1)*4096] = frame.data.iq
+			drxtPrev[aStand, countPrev[aStand]*4096:(countPrev[aStand]+1)*4096] = frame.getTime() + timesPerFrame
+			countPrev[aStand] += 1
+			
+		siCount += 1
+		
+		### Apply the sample offset
+		dataPrev = dataPrev[:,sampleOffset:sampleOffset+4096*chunkSize]
+		drxtPrev = drxtPrev[:,sampleOffset:sampleOffset+4096*chunkSize]
+		
+		### Back up a bit so that we can to the sample offsets properly
+		fh.seek(-drx.FrameSize*4, 1)
+		
+		## Read in the data
+		data = numpy.zeros((4, 4096*chunkSize+4096), dtype=numpy.complex64)
+		drxt = numpy.zeros(data.shape, dtype=numpy.float64)
+		count = [0 for i in xrange(data.shape[0])]
+		
+		### Primary read
+		for i in xrange(4*chunkSize):
+			try:
+				frame = drx.readFrame(fh)
+			except errors.eofError, errors.syncError:
+				done = True
+				break
+				
+			beam,tune,pol = frame.parseID()
+			aStand = 2*(tune-1) + pol
+			
+			if ttFlow[aStand] + ttStep != frame.data.timeTag:
+				print 'Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, frame.data.timeTag/fS, ttFlow[aStand]/fS, ttStep/fS)
+			ttFlow[aStand] = frame.data.timeTag
+			
+			data[aStand, count[aStand]*4096:(count[aStand]+1)*4096] = frame.data.iq
+			drxt[aStand, count[aStand]*4096:(count[aStand]+1)*4096] = frame.getTime() + timesPerFrame
+			count[aStand] += 1
+			
+		### Extra frame for the sample offset - this doesn't update the timetag flow 
+		### checker but will look for errors anyways
+		for i in xrange(4):
+			try:
+				frame = drx.readFrame(fh)
+			except errors.eofError, errors.syncError:
+				done = True
+				break
+				
+			beam,tune,pol = frame.parseID()
+			aStand = 2*(tune-1) + pol
+			
+			if ttFlow[aStand] + ttStep != frame.data.timeTag:
+				print 'Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, frame.data.timeTag/fS, ttFlow[aStand]/fS, ttStep/fS)
+				
+			data[aStand, count[aStand]*4096:(count[aStand]+1)*4096] = frame.data.iq
+			drxt[aStand, count[aStand]*4096:(count[aStand]+1)*4096] = frame.getTime() + timesPerFrame
+			count[aStand] += 1
+			
+		siCount += 1
+		
+		### Apply the sample offset
+		data = data[:,sampleOffset:sampleOffset+4096*chunkSize]
+		drxt = drxt[:,sampleOffset:sampleOffset+4096*chunkSize]
+		
+		### Back up a bit so that we can to the sample offsets properly
+		fh.seek(-drx.FrameSize*4, 1)
+		
+		## FFT
+		rawSpectraPrev = fftEngine(dataPrev)
+		rawSpectra = fftEngine(data)
+		
+		## Apply the sub-sample offset as a phase rotation
+		if tickOffset != 0:
+			rawSpectraPrev = PhaseRotator(rawSpectraPrev, spectralFreq1, spectralFreq2, tickOffset/fS)
+			rawSpectra = PhaseRotator(rawSpectra, spectralFreq1, spectralFreq2, tickOffset/fS)
+			
+		while True:
+			## Read in the data next data block
+			dataNext = numpy.zeros((4, 4096*chunkSize+4096), dtype=numpy.complex64)
+			drxtNext = numpy.zeros(dataNext.shape, dtype=numpy.float64)
+			countNext = [0 for i in xrange(dataNext.shape[0])]
+			
+			### Primary read
 			for i in xrange(4*chunkSize):
 				try:
 					frame = drx.readFrame(fh)
@@ -497,11 +656,12 @@ def main(args):
 					print 'Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, frame.data.timeTag/fS, ttFlow[aStand]/fS, ttStep/fS)
 				ttFlow[aStand] = frame.data.timeTag
 				
-				data[aStand, count[aStand]*4096:(count[aStand]+1)*4096] = frame.data.iq
-				count[aStand] += 1
+				dataNext[aStand, countNext[aStand]*4096:(countNext[aStand]+1)*4096] = frame.data.iq
+				drxtNext[aStand, countNext[aStand]*4096:(countNext[aStand]+1)*4096] = frame.getTime() + timesPerFrame
+				countNext[aStand] += 1
 				
-			## Extra frame for the sample offset - this doesn't update the timetag flow 
-			## checker but will look for errors anyways
+			### Extra frame for the sample offset - this doesn't update the timetag flow 
+			### checker but will look for errors anyways
 			for i in xrange(4):
 				try:
 					frame = drx.readFrame(fh)
@@ -515,32 +675,34 @@ def main(args):
 				if ttFlow[aStand] + ttStep != frame.data.timeTag:
 					print 'Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, frame.data.timeTag/fS, ttFlow[aStand]/fS, ttStep/fS)
 					
-				data[aStand, count[aStand]*4096:(count[aStand]+1)*4096] = frame.data.iq
-				count[aStand] += 1
+				dataNext[aStand, countNext[aStand]*4096:(countNext[aStand]+1)*4096] = frame.data.iq
+				drxtNext[aStand, countNext[aStand]*4096:(countNext[aStand]+1)*4096] = frame.getTime() + timesPerFrame
+				countNext[aStand] += 1
 				
 			siCount += 1
 			
-			## Have we reached as far as we can simultaneously go?
+			### Apply the sample offset
+			dataNext = dataNext[:,sampleOffset:sampleOffset+4096*chunkSize]
+			drxtNext = drxtNext[:,sampleOffset:sampleOffset+4096*chunkSize]
+			
+			### Back up a bit so that we can to the sample offsets properly
+			fh.seek(-drx.FrameSize*4, 1)
+			
+			### Have we reached as far as we can simultaneously go?
 			if siCount > siCountMax:
 				done = True
 				
-			## Apply the sample offset
-			data = data[:,sampleOffset:sampleOffset+4096*chunkSize]
-			
-			## Back up a bit so that we can to the sample offsets properly
-			fh.seek(-drx.FrameSize*4, 1)
-			
 			## Are we done yet?
 			if done:
 				break
 				
 			## FFT
-			rawSpectra = PulsarEngineRaw(data, LFFT)
+			rawSpectraNext = fftEngine(dataNext)
 			
 			## Apply the sub-sample offset as a phase rotation
 			if tickOffset != 0:
-				rawSpectra = PhaseRotator(rawSpectra, freq1, freq2, tickOffset/fS)
-				
+				rawSpectraNext = PhaseRotator(rawSpectraNext, spectralFreq1, spectralFreq2, tickOffset/fS)
+			
 			## S-K flagging
 			flag = GenerateMask(rawSpectra)
 			weight1 = numpy.where( flag[:2,:].sum(axis=0) == 0, 0, 1 ).astype(numpy.float32)
@@ -548,8 +710,19 @@ def main(args):
 			ff1 = 1.0*(LFFT - weight1.sum()) / LFFT
 			ff2 = 1.0*(LFFT - weight2.sum()) / LFFT
 			
+			## Dedisperse
+			drxtOut, rawSpectraDedispersed = MultiChannelCD(drxt[:,::LFFT], rawSpectra, spectraFreq1, spectraFreq2, 1.0*srate/LFFT, DM, 
+													drxtPrev[:,::LFFT], rawSpectraPrev, drxtNext[:,::LFFT], rawSpectraNext)
+													
+			## Update the state variables used to get the CD process continuous
+			rawSpectraPrev = rawSpectra
+			drxtPrev = drxt
+			
+			rawSpectra = rawSpectraNext
+			drxt = drxtNext
+			
 			## Detect power
-			data = reduceEngine(rawSpectra)
+			data = reduceEngine(rawSpectraDedispersed)
 			
 			## Optimal data scaling
 			bzero, bscale, bdata = OptimizeDataLevels(data, LFFT)
