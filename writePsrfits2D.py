@@ -281,6 +281,12 @@ def main(args):
 	else:
 		OptimizeDataLevels = OptimizeDataLevels8Bit
 		
+	# Parameter validation
+	if getCoherentSampleSize(centralFreq1-srate/2, 1.0*srate/LFFT, DM) > nsblk:
+		raise RuntimeError("Too few samples for coherent dedispersion.  Considering increasing the number of channels.")
+	elif getCoherentSampleSize(centralFreq2-srate/2, 1.0*srate/LFFT, DM)> nsblk:
+		raise RuntimeError("Too few samples for coherent dedispersion.  Considering increasing the number of channels.")
+		
 	# Adjust the time for the padding used for coherent dedispersion
 	print "MJD shifted by %.3f ms to account for padding" %  (nsblk*LFFT/srate*1000.0,)
 	beginDate = ephem.Date(astro.unix_to_utcjd(junkFrame.getTime() + nsblk*LFFT/srate) - astro.DJD_OFFSET)
