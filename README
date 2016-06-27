@@ -6,8 +6,8 @@ frameworks as well as the psrfits_utils Python module.  psrfits_utils can
 be found at:  https://github.com/kstovall/psrfits_utils
 
 No installation (e.g., python setup.py install) is required to use the 
-software.  Simply run make to build the _psr.so module and then use the 
-scripts in the Pulsar directory.
+software.  Simply run make to build the _psr.so and _helper.so modules and 
+then use the scripts in the Pulsar directory.
 
 writePsrfits2.py
 ----------------
@@ -45,7 +45,7 @@ the 'combine_lwa' script across multiple beams.
 writeHDF5FromPsrfits.py
 -----------------------
 Given a PSRFITS file created by the writePsrfit2 family of converters, build
-an HDF5 file that is compatiable with the tools in Commissioning/DRX/HDF5.
+an HDF5 file that is compatible with the tools in Commissioning/DRX/HDF5.
 
 updatePsrfitsMask.py
 --------------------
@@ -53,9 +53,17 @@ Use spectral kurtosis to update the weight mask in a PSRFITS file to flag RFI.
 The script also takes in a list of frequencies/frequency ranges that can be 
 used to update the weight mask.
 
+plotSinglePulse.py
+------------------
+Graphical interface for working with .singlepulse search results from PRESTO.
+
 psr.c
 -----
 Compiled Python/NumPy extension used by the scripts to speed up processing.
+
+helper.c
+--------
+Compiled Python/NumPy extension used by the script to speed up display.
 
 Makefile
 --------
@@ -69,5 +77,5 @@ for building the HDF5 files.
 drx2drxi.py
 -----------
 Script to take a standard DRX file and convert it to two polarization interlaced
-DRX files, one for each tuning.  The interlaced DRX format is compatiable with
+DRX files, one for each tuning.  The interlaced DRX format is compatible with
 the dspsr suite.
