@@ -1862,7 +1862,11 @@ PyMODINIT_FUNC init_psr(void) {
 	
 	// LSL FFTW Wisdom
 	pModule = PyImport_ImportModule("lsl.common.paths");
-	pDataPath = PyObject_GetAttrString(pModule, "data");
-	sprintf(filename, "%s/fftw_wisdom.txt", PyString_AsString(pDataPath));
-	read_wisdom(filename, m);
+	if( pModule != NULL ) {
+		pDataPath = PyObject_GetAttrString(pModule, "data");
+		sprintf(filename, "%s/fftw_wisdom.txt", PyString_AsString(pDataPath));
+		read_wisdom(filename, m);
+	} else {
+		PyErr_Warn(PyExc_RuntimeWarning, "Cannot load the LSL FFTWF wisdom");
+	}
 }
