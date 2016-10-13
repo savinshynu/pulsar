@@ -279,8 +279,7 @@ static PyObject *PhaseRotator(PyObject *self, PyObject *args, PyObject *kwds) {
 
 	long i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	static char *kwlist[] = {"signals", "freq1", "freq2", "delay", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OOOd", kwlist, &signals, &f1, &f2, &delay)) {
+	if(!PyArg_ParseTuple(args, "OOOd", &signals, &f1, &f2, &delay)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -394,12 +393,10 @@ static PyObject *ComputeSKMask(PyObject *self, PyObject *args, PyObject *kwds) {
 	double lower, upper;
 	long i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	static char *kwlist[] = {"signals", "lower", "upper", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "Odd", kwlist, &signals, &lower, &upper)) {
+	if(!PyArg_ParseTuple(args, "Odd", &signals, &lower, &upper)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
-	
 	// Bring the data into C and make it usable
 	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_COMPLEX64, 3, 3);
 	
@@ -491,8 +488,7 @@ static PyObject *ComputePseudoSKMask(PyObject *self, PyObject *args, PyObject *k
 	double lower, upper;
 	long i, j, k, nStand, nSamps, nChan, nFFT, skN;
 	
-	static char *kwlist[] = {"signals", "LFFT", "N", "lower", "upper", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "Olldd", kwlist, &signals, &nChan, &skN, &lower, &upper)) {
+	if(!PyArg_ParseTuple(args, "Olldd", &signals, &nChan, &skN, &lower, &upper)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -675,8 +671,7 @@ static PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) 
 
 	long i, j, k, l, nStand, nChan, nFFT;
 	
-	static char *kwlist[] = {"time", "rawSpectra", "freq1", "freq2", "sampleRate", "DM", "prevTime", "prevRawSpectra", "nextTime", "nextRawSpectra", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OOOOddOOOO", kwlist, &drxTime, &drxData, &spectraFreq1, &spectraFreq2, &sRate, &DM, &prevTime, &prevData, &nextTime, &nextData)) {
+	if(!PyArg_ParseTuple(args, "OOOOddOOOO", &drxTime, &drxData, &spectraFreq1, &spectraFreq2, &sRate, &DM, &prevTime, &prevData, &nextTime, &nextData)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -1170,8 +1165,7 @@ static PyObject *CombineToIntensity(PyObject *self, PyObject *args, PyObject *kw
 	
 	long i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	static char *kwlist[] = {"signals", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &signals)) {
+	if(!PyArg_ParseTuple(args, "O", &signals)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -1255,8 +1249,7 @@ static PyObject *CombineToLinear(PyObject *self, PyObject *args, PyObject *kwds)
 	
 	long i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	static char *kwlist[] = {"signals", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &signals)) {
+	if(!PyArg_ParseTuple(args, "O", &signals)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -1336,8 +1329,7 @@ static PyObject *CombineToCircular(PyObject *self, PyObject *args, PyObject *kwd
 	
 	long i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	static char *kwlist[] = {"signals", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &signals)) {
+	if(!PyArg_ParseTuple(args, "O", &signals)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -1431,8 +1423,7 @@ static PyObject *CombineToStokes(PyObject *self, PyObject *args, PyObject *kwds)
 	
 	long i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	static char *kwlist[] = {"signals", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &signals)) {
+	if(!PyArg_ParseTuple(args, "O", &signals)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -1531,8 +1522,7 @@ static PyObject *OptimizeDataLevels8Bit(PyObject *self, PyObject *args, PyObject
 	long i, j, k, nStand, nSamps, nFFT;
 	int nChan = 64;
 	
-	static char *kwlist[] = {"signals", "LFFT", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "Oi", kwlist, &spectra, &nChan)) {
+	if(!PyArg_ParseTuple(args, "Oi", &spectra, &nChan)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -1665,8 +1655,7 @@ static PyObject *OptimizeDataLevels4Bit(PyObject *self, PyObject *args, PyObject
 	long i, j, k, nStand, nSamps, nFFT;
 	int nChan = 64;
 	
-	static char *kwlist[] = {"signals", "LFFT", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "Oi", kwlist, &spectra, &nChan)) {
+	if(!PyArg_ParseTuple(args, "Oi", &spectra, &nChan)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
