@@ -59,6 +59,7 @@ def parseOptions(args):
 	# Command line flags - default values
 	config['output'] = None
 	config['args'] = []
+	config['nsblk'] = 32
 	config['useSK'] = True
 	config['sumPols'] = True
 	config['source'] = None
@@ -220,6 +221,9 @@ def main(args):
 		pass
 	tInt = obs1.attrs['tInt']
 	
+	# Sub-integration block size
+	nsblk = config['nsblk']
+	
 	## Date
 	beginDate = ephem.Date(astro.unix_to_utcjd(obs1['time'][0]) - astro.DJD_OFFSET)
 	beginTime = beginDate.datetime()
@@ -236,13 +240,13 @@ def main(args):
 	print "Tunings: %.1f Hz, %.1f Hz" % (centralFreq1, centralFreq2)
 	print "Sample Rate: %i Hz" % srate
 	print "Sample Time: %f s" % tInt
+	print "Sub-block Time: %f s" % (tInt*nsblk,)
 	print "Data Products: %s" % ','.join(dataProducts)
 	print "Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile)
 	print "---"
 	
 	# Create the output PSRFITS file(s)
 	pfu_out = []
-	nsblk = 32
 	if 'XX' in dataProducts and 'YY' in dataProducts and config['sumPols']:
 		polNames = 'I'
 		nPols = 1

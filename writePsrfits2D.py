@@ -38,6 +38,7 @@ Options:
 -h, --help                  Display this help information
 -o, --output                Output file basename
 -c, --nchan                 Set FFT length (default = 512)
+-b, --nsblk                 Set spectra per sub-block (default = 4096)
 -p, --no-sk-flagging        Disable on-the-fly SK flagging of RFI
 -n, --no-summing            Do not sum polarizations
 -i, --circularize           Convert data to RR/LL
@@ -66,6 +67,7 @@ def parseOptions(args):
 	config['output'] = None
 	config['args'] = []
 	config['nchan'] = 512
+	config['nsblk'] = 4096
 	config['useSK'] = True
 	config['sumPols'] = True
 	config['circularize'] = False
@@ -78,7 +80,7 @@ def parseOptions(args):
 	
 	# Read in and process the command line flags
 	try:
-		opts, args = getopt.getopt(args, "hc:pniks:o:r:d:4w", ["help", "nchan=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode", "disable-window"])
+		opts, args = getopt.getopt(args, "hc:b:pniks:o:r:d:4w", ["help", "nchan=", "nsblk=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode", "disable-window"])
 	except getopt.GetoptError, err:
 		# Print help information and exit:
 		print str(err) # will print something like "option -a not recognized"
@@ -90,6 +92,8 @@ def parseOptions(args):
 			usage(exitCode=0)
 		elif opt in ('-c', '--nchan'):
 			config['nchan'] = int(value)
+		elif opt in ('-b', '--nsblk'):
+			config['nsblk'] = int(value)
 		elif opt in ('-p', '--no-sk-flagging'):
 			config['useSK'] = False
 		elif opt in ('-n', '--no-summing'):
@@ -178,6 +182,9 @@ def main(args):
 	# FFT length
 	LFFT = config['nchan']
 	
+	# Sub-integration block size
+	nsblk = config['nsblk']
+	
 	DM = float(config['args'][0])
 	fh = open(config['args'][1], "rb")
 	nFramesFile = os.path.getsize(config['args'][1]) / drx.FrameSize
@@ -250,6 +257,7 @@ def main(args):
 	print "Tunings: %.1f Hz, %.1f Hz" % (centralFreq1, centralFreq2)
 	print "Sample Rate: %i Hz" % srate
 	print "Sample Time: %f s" % (LFFT/srate,)
+	print "Sub-block Time: %f s" % (LFFT/srate*nsblk,)
 	print "Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol)
 	print "---"
 	print "Using FFTW Wisdom? %s" % useWisdom
@@ -258,7 +266,6 @@ def main(args):
 	
 	# Create the output PSRFITS file(s)
 	pfu_out = []
-	nsblk = 4096
 	if config['sumPols']:
 		polNames = 'I'
 		nPols = 1

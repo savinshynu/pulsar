@@ -60,6 +60,7 @@ def parseOptions(args):
 	# Command line flags - default values
 	config['output'] = None
 	config['args'] = []
+	config['nsblk'] = 32
 	config['useSK'] = True
 	config['sumPols'] = True
 	config['source'] = None
@@ -172,6 +173,9 @@ def main(args):
 	dataProducts = junkFrame.getDataProducts()
 	tInt = junkFrame.header.nInts*LFFT/srate
 	
+	# Sub-integration block size
+	nsblk = config['nsblk']
+	
 	## Date
 	beginDate = ephem.Date(astro.unix_to_utcjd(junkFrame.getTime()) - astro.DJD_OFFSET)
 	beginTime = beginDate.datetime()
@@ -188,13 +192,13 @@ def main(args):
 	print "Tunings: %.1f Hz, %.1f Hz" % (centralFreq1, centralFreq2)
 	print "Sample Rate: %i Hz" % srate
 	print "Sample Time: %f s" % tInt
+	print "Sub-block Time: %f s" % (tInt*nsblk,)
 	print "Data Products: %s" % ','.join(dataProducts)
 	print "Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile)
 	print "---"
 	
 	# Create the output PSRFITS file(s)
 	pfu_out = []
-	nsblk = 32
 	if junkFrame.containsLinearData() and config['sumPols']:
 		polNames = 'I'
 		nPols = 1
