@@ -114,12 +114,11 @@ static PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds)
 				
 				fftwf_execute_dft(p, in, in);
 				
-				for(k=0; k<nChan; k++) {
-					if( k < nChan/2 ) {
-						*(b + nFFT*nChan*i + nFFT*(k + nChan/2) + j) = (in[k][0] + in[k][1]*imaginary) / sqrt(nChan);
-					} else {
-						*(b + nFFT*nChan*i + nFFT*(k - nChan/2) + j) = (in[k][0] + in[k][1]*imaginary) / sqrt(nChan);
-					}
+				for(k=0; k<nChan/2; k++) {
+					*(b + nChan*nFFT*i + nFFT*k + j)  = (in[k+nChan/2+nChan%2][0] + in[k+nChan/2+nChan%2][1]*imaginary) / sqrt(nChan);
+				}
+				for(k=nChan/2; k<nChan; k++) {
+					*(b + nChan*nFFT*i + nFFT*k + j)  = (in[k-nChan/2][0] + in[k-nChan/2][1]*imaginary) / sqrt(nChan);
 				}
 			}
 			fftwf_free(in);
@@ -232,12 +231,11 @@ static PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject 
 				
 				fftwf_execute_dft(p, in, in);
 				
-				for(k=0; k<nChan; k++) {
-					if( k < nChan/2 ) {
-						*(b + nFFT*nChan*i + nFFT*(k + nChan/2) + j) = (in[k][0] + in[k][1]*imaginary) / sqrt(nChan);
-					} else {
-						*(b + nFFT*nChan*i + nFFT*(k - nChan/2) + j) = (in[k][0] + in[k][1]*imaginary) / sqrt(nChan);
-					}
+				for(k=0; k<nChan/2; k++) {
+					*(b + nChan*nFFT*i + nFFT*k + j)  = (in[k+nChan/2+nChan%2][0] + in[k+nChan/2+nChan%2][1]*imaginary) / sqrt(nChan);
+				}
+				for(k=nChan/2; k<nChan; k++) {
+					*(b + nChan*nFFT*i + nFFT*k + j)  = (in[k-nChan/2][0] + in[k-nChan/2][1]*imaginary) / sqrt(nChan);
 				}
 			}
 			fftwf_free(in);
