@@ -1844,7 +1844,7 @@ PyMODINIT_FUNC init_psr(void) {
 	import_array();
 	
 	// Version and revision information
-	PyModule_AddObject(m, "__version__", PyString_FromString("0.5"));
+	PyModule_AddObject(m, "__version__", PyString_FromString("0.6"));
 	PyModule_AddObject(m, "__revision__", PyString_FromString("$Rev$"));
 	
 	// LSL FFTW Wisdom
