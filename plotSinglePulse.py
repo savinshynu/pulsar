@@ -62,6 +62,8 @@ Options:
                             seconds to load (Default = 0,inf)
 -d, --dm-range              Comma separated list of the DM range in pc cm^-3
                             to load (Default = 0,inf)
+-w, --width-range           Comma separated list of the pulse width range in ms
+                            to load (Default = 0,inf)
 -f, --fitsname              Optional PSRFITS file to use for waterfall plots
 """
 	
@@ -77,12 +79,13 @@ def parseOptions(args):
 	config['threshold'] = 5.0
 	config['timeRange'] = [0, numpy.inf]
 	config['dmRange'] = [0, numpy.inf]
+	config['widthRange'] = [0, numpy.inf]
 	config['fitsname'] = None
 	config['args'] = []
 	
 	# Read in and process the command line flags
 	try:
-		opts, args = getopt.getopt(args, "ht:r:d:f:", ["help", "threshold=", "time-range=", "dm-range=", "fitsname="])
+		opts, args = getopt.getopt(args, "ht:r:d:w:f:", ["help", "threshold=", "time-range=", "dm-range=", "width-range=", "fitsname="])
 	except getopt.GetoptError, err:
 		# Print help information and exit:
 		print str(err) # will print something like "option -a not recognized"
@@ -100,6 +103,9 @@ def parseOptions(args):
 		elif opt in ('-d', '--dm-range'):
 			values = [float(v) for v in value.split(',')]
 			config['dmRange'] = values
+		elif opt in ('-w', '--width-range'):
+			values = [float(v) for v in value.split(',')]
+			config['widthRange'] = values
 		elif opt in ('-f', '--fitsname'):
 			config['fitsname'] = value
 		else:
@@ -118,7 +124,12 @@ def parseOptions(args):
 	if len(config['dmRange']) != 2:
 		raise RuntimeError("Invalid DM range of '%s'" % str(config['dmRange']))
 	if config['dmRange'][1] <= config['dmRange'][0]:
-		raise RuntimeError("Invalid tDM range of '%s'" % str(config['dmRange']))
+		raise RuntimeError("Invalid DM range of '%s'" % str(config['dmRange']))
+		
+	if len(config['widthRange']) != 2:
+		raise RuntimeError("Invalid width range of '%s'" % str(config['widthRange']))
+	if config['widthRange'][1] <= config['widthRange'][0]:
+		raise RuntimeError("Invalid width range of '%s'" % str(config['widthRange']))
 		
 	if config['fitsname'] is not None:
 		if not os.path.exists(config['fitsname']):
@@ -480,7 +491,7 @@ class SinglePulse_GUI(object):
 		self._mouseClickCache = {'1a':[], '1b':[], '1c':[], '2':[]}
 		self._keyPressCache = {'1a':[], '1b':[], '1c':[], '2':[]}
 		
-	def loadData(self, filenames, threshold=5.0, timeRange=[0,numpy.inf], dmRange=[0,numpy.inf], fitsname=None):
+	def loadData(self, filenames, threshold=5.0, timeRange=[0,numpy.inf], dmRange=[0,numpy.inf], widthRange=[0, numpy.inf], fitsname=None):
 		print "Loading %i files with a pulse S/N threshold of %.1f" % (len(filenames), threshold)
 		tStart = time.time()
 
@@ -515,9 +526,10 @@ class SinglePulse_GUI(object):
 		self.data.data[:,4] *= 1000.0*self.meta.dt	# Convert width from samples to time in ms
 		print "            -> Found %i pulses" % self.data.shape[0]
 		
-		print "%6.3f s - Applying time and DM cuts" % (time.time()-tStart,)
-		valid = numpy.where( (self.data[:,2] >= timeRange[0]) & (self.data[:,2] <= timeRange[1]) & \
-						 (self.data[:,0] >= dmRange[0]  ) & (self.data[:,0] <= dmRange[1]  ) )[0]
+		print "%6.3f s - Applying time, DM, and width cuts" % (time.time()-tStart,)
+		valid = numpy.where( (self.data[:,2] >= timeRange[0] ) & (self.data[:,2] <= timeRange[1] ) & \
+						 (self.data[:,0] >= dmRange[0]   ) & (self.data[:,0] <= dmRange[1]   ) & \
+						 (self.data[:,4] >= widthRange[0]) & (self.data[:,4] <= widthRange[1])    )[0]
 		self.data = self.data[valid,:]
 		print "            -> Downselected to %i pulses" % self.data.shape[0]
 		
@@ -3561,7 +3573,7 @@ def main(args):
 	if len(config['args']) >= 1:
 		## If there is a filename on the command line, load it
 		frame.filenames = config['args']
-		frame.data.loadData(config['args'], threshold=config['threshold'], timeRange=config['timeRange'], dmRange=config['dmRange'], fitsname=config['fitsname'])
+		frame.data.loadData(config['args'], threshold=config['threshold'], timeRange=config['timeRange'], dmRange=config['dmRange'], widthRange=config['widthRange'], fitsname=config['fitsname'])
 		frame.data.render()
 		frame.data.draw()
 		
