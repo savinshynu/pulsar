@@ -36,7 +36,7 @@ from lsl.statistics import kurtosis
 from _psr import *
 
 
-MAX_QUEUE_DEPTH = 10
+MAX_QUEUE_DEPTH = 3
 readerQ = deque()
 
 
@@ -60,7 +60,7 @@ Options:
 -d, --dec                   Declination (sDD:MM:SS.S, J2000)
 -4, --4bit-data             Save the spectra in 4-bit mode (default = 8-bit)
 -t, --subsample-correction  Enable sub-sample delay correction
--q, --queue-depth           Reader queue depth (default = 5)
+-q, --queue-depth           Reader queue depth (default = 3)
 
 Note:  If a source name is provided and the RA or declination is not, the script
        will attempt to determine these values.

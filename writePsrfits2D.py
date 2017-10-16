@@ -34,7 +34,7 @@ from lsl.misc.dedispersion import getCoherentSampleSize
 from _psr import *
 
 
-MAX_QUEUE_DEPTH = 10
+MAX_QUEUE_DEPTH = 3
 readerQ = deque()
 
 
@@ -56,7 +56,7 @@ Options:
 -r, --ra                    Right Ascension (HH:MM:SS.SS, J2000)
 -d, --dec                   Declination (sDD:MM:SS.S, J2000)
 -4, --4bit-data             Save the spectra in 4-bit mode (default = 8-bit)
--q, --queue-depth           Reader queue depth (default = 5)
+-q, --queue-depth           Reader queue depth (default = 3)
 
 Note:  If a source name is provided and the RA or declination is not, the script
        will attempt to determine these values.
