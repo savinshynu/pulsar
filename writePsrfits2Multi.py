@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+﻿#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 """
@@ -12,22 +12,32 @@ $LastChangedDate$
 
 import os
 import sys
+import time
 import numpy
 import ephem
 import ctypes
 import getopt
 from datetime import datetime
 
+
+import threading
+from collections import deque
+from multiprocessing import cpu_count
+
 import psrfits_utils.psrfits_utils as pfu
 
-import lsl.reader.drx as drx
-import lsl.reader.errors as errors
+from lsl.reader.ldp import DRXFile
+from lsl.reader import errors
 import lsl.astro as astro
 import lsl.common.progress as progress
 from lsl.common.dp import fS
 from lsl.statistics import kurtosis
 
 from _psr import *
+
+
+MAX_QUEUE_DEPTH = 10
+readerQ = deque()
 
 
 def usage(exitCode=None):
@@ -50,6 +60,7 @@ Options:
 -d, --dec                   Declination (sDD:MM:SS.S, J2000)
 -4, --4bit-data             Save the spectra in 4-bit mode (default = 8-bit)
 -t, --subsample-correction  Enable sub-sample delay correction
+-q, --queue-depth           Reader queue depth (default = 5)
 
 Note:  If a source name is provided and the RA or declination is not, the script
        will attempt to determine these values.
@@ -82,7 +93,7 @@ def parseOptions(args):
 	
 	# Read in and process the command line flags
 	try:
-		opts, args = getopt.getopt(args, "hc:b:pniks:o:r:d:4t", ["help", "nchan=", "nsblk=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode", "subsample-correction"])
+		opts, args = getopt.getopt(args, "hc:b:pniks:o:r:d:4tq:", ["help", "nchan=", "nsblk=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode", "subsample-correction", "queue-depth="])
 	except getopt.GetoptError, err:
 		# Print help information and exit:
 		print str(err) # will print something like "option -a not recognized"
@@ -119,6 +130,9 @@ def parseOptions(args):
 			config['dataBits'] = 4
 		elif opt in ('-t', '--subsample-correction'):
 			config['enableSubSample'] = True
+		elif opt in ('-q', '--queue-depth'):
+			global MAX_QUEUE_DEPTH
+			MAX_QUEUE_DEPTH = max([1, int(value, 10)])
 		else:
 			assert False
 			
@@ -157,6 +171,45 @@ def resolveTarget(name):
 	return raS, decS, serviceS
 
 
+def reader(idf, chunkTime, outQueue, core=None):
+	# Setup
+	done = False
+	siCount = 0
+	
+	if core is not None:
+		print 'Binding reader to core %i -> %s' % (core, BindToCore(core))
+		
+	try:
+		while True:
+			while len(outQueue) >= MAX_QUEUE_DEPTH:
+				time.sleep(0.001)
+				
+			## Read in the data
+			try:
+				readT, t, rawdata = idf.read(chunkTime)
+				siCount += 1
+			except errors.eofError:
+				break
+				
+			## Add it to the queue
+			outQueue.append( (siCount,t,rawdata) )
+			
+			## Are we done yet?
+			if done:
+				break
+				
+	except Exception as e:
+		print "Reader Error: %s" % str(e)
+		
+	outQueue.append(None)
+
+
+def getFromQueue(queueName):
+	while len(queueName) == 0:
+		time.sleep(0.001)
+	return queueName.popleft()
+
+
 def main(args):
 	# Parse command line options
 	config = parseOptions(args)
@@ -193,37 +246,19 @@ def main(args):
 	startTimes = []
 	nFrames = []
 	for filename in filenames:
-		fh = open(filename, "rb")
-		# Find the good data (non-zero decimation)
-		while True:
-			try:
-				junkFrame = drx.readFrame(fh)
-				srate = junkFrame.getSampleRate()
-				break
-			except ZeroDivisionError:
-				pass
-		fh.seek(-drx.FrameSize, 1)
+		idf = DRXFile(filename)
+		o = 0#idf.offset(10)
 		
-		# Line up the time tags for the various tunings/polarizations
-		timeTags = []
-		for i in xrange(16):
-			junkFrame = drx.readFrame(fh)
-			timeTags.append(junkFrame.data.timeTag)
-		fh.seek(-16*drx.FrameSize, 1)
-		
-		i = 0
-		while (timeTags[i+0] != timeTags[i+1]) or (timeTags[i+0] != timeTags[i+2]) or (timeTags[i+0] != timeTags[i+3]):
-			i += 1
-			fh.seek(drx.FrameSize, 1)
-			
 		# Find out how many frame sets are in each file
-		size = os.path.getsize(filename) - fh.tell()
-		nFrames.append( size / drx.FrameSize / 4 )
+		srate = idf.getInfo('sampleRate')
+		beampols = idf.getInfo('beampols')
+		tunepol = beampols
+		nFramesFile = idf.getInfo('nFrames')
+		nFramesFile -= int(o*srate/4096)*tunepol
+		nFrames.append( nFramesFile / tunepol )
 		
-		# Read in the first frame after the alignment process
-		junkFrame = drx.readFrame(fh)
-		srate = junkFrame.getSampleRate()
-		startTimes.append( junkFrame.data.timeTag - junkFrame.header.timeOffset )
+		# Get the start time of the file
+		startTimes.append( idf.getInfo('tStartSamples') )
 		
 		# Validate
 		try:
@@ -235,7 +270,7 @@ def main(args):
 			srateOld = srate
 			
 		# Done
-		fh.close()
+		idf.close()
 		
 	ttSkip = int(fS / srate * 4096)
 	spSkip = int(fS / srate)
@@ -281,46 +316,45 @@ def main(args):
 		sys.exit()
 	print " "
 	
+	# Setup the processing constraints
+	if config['sumPols']:
+		polNames = 'I'
+		nPols = 1
+		reduceEngine = CombineToIntensity
+	elif config['stokes']:
+		polNames = 'IQUV'
+		nPols = 4
+		reduceEngine = CombineToStokes
+	elif config['circularize']:
+		polNames = 'LLRR'
+		nPols = 2
+		reduceEngine = CombineToCircular
+	else:
+		polNames = 'XXYY'
+		nPols = 2
+		reduceEngine = CombineToLinear
+		
+	if config['dataBits'] == 4:
+		OptimizeDataLevels = OptimizeDataLevels4Bit
+	else:
+		OptimizeDataLevels = OptimizeDataLevels8Bit
+		
 	for c,filename,frameOffset,sampleOffset,tickOffset in zip(range(len(filenames)), filenames, frameOffsets, sampleOffsets, tickOffsets):
-		fh = open(filename, "rb")
-		nFramesFile = os.path.getsize(filename) / drx.FrameSize
+		idf = DRXFile(filename)
+		o = 0#idf.offset(frameOffset*4096/srate)
 		
-		# Find the good data (non-zero decimation)
-		while True:
-			try:
-				junkFrame = drx.readFrame(fh)
-				srate = junkFrame.getSampleRate()
-				break
-			except ZeroDivisionError:
-				pass
-		fh.seek(-drx.FrameSize, 1)
+		# Find out how many frame sets are in each file
+		srate = idf.getInfo('sampleRate')
+		beampols = idf.getInfo('beampols')
+		tunepol = beampols
+		nFramesFile = idf.getInfo('nFrames')
+		nFramesFile -= int(o*srate/srate)*tunepol
 		
-		# Line up the time tags for the various tunings/polarizations
-		timeTags = []
-		for i in xrange(16):
-			junkFrame = drx.readFrame(fh)
-			timeTags.append(junkFrame.data.timeTag)
-		fh.seek(-16*drx.FrameSize, 1)
-		
-		i = 0
-		while (timeTags[i+0] != timeTags[i+1]) or (timeTags[i+0] != timeTags[i+2]) or (timeTags[i+0] != timeTags[i+3]):
-			i += 1
-			fh.seek(drx.FrameSize, 1)
-			
 		# Additional seek for timetag alignment across the files
-		fh.seek(drx.FrameSize*frameOffset*4, 1)
-		
-		# Load in basic information about the data
-		junkFrame = drx.readFrame(fh)
-		fh.seek(-drx.FrameSize, 1)
-		## What's in the data?
-		srate = junkFrame.getSampleRate()
-		beams = drx.getBeamCount(fh)
-		tunepols = drx.getFramesPerObs(fh)
-		tunepol = tunepols[0] + tunepols[1] + tunepols[2] + tunepols[3]
+		o = idf.offset(frameOffset*4096/srate)
 		
 		## Date
-		tStart = junkFrame.getTime() + sampleOffset*spSkip/fS + tickOffset/fS
+		tStart = idf.getInfo('tStart') + sampleOffset*spSkip/fS + tickOffset/fS
 		beginDate = datetime.utcfromtimestamp(tStart)
 		beginTime = beginDate
 		mjd = astro.jd_to_mjd(astro.unix_to_utcjd(tStart))
@@ -329,26 +363,15 @@ def main(args):
 		if config['output'] is None:
 			config['output'] = "drx_%05d_%s" % (mjd_day, config['source'].replace(' ', ''))
 			
-		## Tuning frequencies and initial time tags
-		ttStep = int(fS / srate * 4096)
-		ttFlow = [0, 0, 0, 0]
-		for i in xrange(4):
-			junkFrame = drx.readFrame(fh)
-			beam,tune,pol = junkFrame.parseID()
-			aStand = 2*(tune-1) + pol
-			ttFlow[aStand] = junkFrame.data.timeTag - ttStep
-			
-			if tune == 1:
-				centralFreq1 = junkFrame.getCentralFreq()
-			else:
-				centralFreq2 = junkFrame.getCentralFreq()
-		fh.seek(-4*drx.FrameSize, 1)
+		## Tuning frequencies
+		centralFreq1 = idf.getInfo('freq1')
+		centralFreq2 = idf.getInfo('freq2')
+		beam = idf.getInfo('beam')
 		
 		# File summary
 		print "Input Filename: %s (%i of %i)" % (filename, c+1, len(filenames))
 		print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
-		print "Beams: %i" % beams
-		print "Tune/Pols: %i %i %i %i" % tunepols
+		print "Tune/Pols: %i" % tunepol
 		print "Tunings: %.1f Hz, %.1f Hz" % (centralFreq1, centralFreq2)
 		print "Sample Rate: %i Hz" % srate
 		print "Sample Time: %f s" % (LFFT/srate,)
@@ -359,28 +382,6 @@ def main(args):
 		
 		# Create the output PSRFITS file(s)
 		pfu_out = []
-		if config['sumPols']:
-			polNames = 'I'
-			nPols = 1
-			reduceEngine = CombineToIntensity
-		elif config['stokes']:
-			polNames = 'IQUV'
-			nPols = 4
-			reduceEngine = CombineToStokes
-		elif config['circularize']:
-			polNames = 'LLRR'
-			nPols = 2
-			reduceEngine = CombineToCircular
-		else:
-			polNames = 'XXYY'
-			nPols = 2
-			reduceEngine = CombineToLinear
-			
-		if config['dataBits'] == 4:
-			OptimizeDataLevels = OptimizeDataLevels4Bit
-		else:
-			OptimizeDataLevels = OptimizeDataLevels8Bit
-			
 		for t in xrange(1, 2+1):
 			## Basic structure and bounds
 			pfo = pfu.psrfits()
@@ -456,6 +457,7 @@ def main(args):
 		# Speed things along, the data need to be processed in units of 'nsblk'.  
 		# Find out how many frames per tuning/polarization that corresponds to.
 		chunkSize = nsblk*LFFT/4096
+		chunkTime = LFFT/srate*nsblk
 		
 		# Frequency arrays for use with the phase rotator
 		freq1 = centralFreq1 + numpy.fft.fftshift( numpy.fft.fftfreq(LFFT, d=1.0/srate) )
@@ -475,76 +477,52 @@ def main(args):
 				
 		# Create the progress bar so that we can keep up with the conversion.
 		try:
-			pbar = progress.ProgressBarPlus(max=siCountMax, span=55)
+			pbar = progress.ProgressBarPlus(max=siCountMax, span=52)
 		except AttributeError:
-			pbar = progress.ProgressBar(max=siCountMax, span=55)
+			pbar = progress.ProgressBar(max=siCountMax, span=52)
+			
+		# Pre-read the first frame so that we have something to pad with, if needed
+		if sampleOffset != 0:
+			# Pre-read the first frame
+			readT, t, dataPrev = idf.read(4096/srate)
 			
 		# Go!
-		done = False
-		siCount = 0
-		while True:
-			## Read in the data
-			data = numpy.zeros((4, 4096*chunkSize+4096), dtype=numpy.complex64)
-			count = [0 for i in xrange(data.shape[0])]
+		rdr = threading.Thread(target=reader, args=(idf, chunkTime, readerQ), kwargs={'core':0})
+		rdr.setDaemon(True)
+		rdr.start()
+		
+		# Main Loop
+		incoming = getFromQueue(readerQ)
+		while incoming is not None:
+			## Unpack
+			siCount, t, rawdata = incoming
 			
-			## Primary read
-			for i in xrange(4*chunkSize):
-				try:
-					frame = drx.readFrame(fh)
-				except errors.eofError, errors.syncError:
-					done = True
-					break
-					
-				beam,tune,pol = frame.parseID()
-				aStand = 2*(tune-1) + pol
-				
-				if ttFlow[aStand] + ttStep != frame.data.timeTag:
-					print 'Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, frame.data.timeTag/fS, ttFlow[aStand]/fS, ttStep/fS)
-				ttFlow[aStand] = frame.data.timeTag
-				
-				data[aStand, count[aStand]*4096:(count[aStand]+1)*4096] = frame.data.iq
-				count[aStand] += 1
-				
-			## Extra frame for the sample offset - this doesn't update the timetag flow 
-			## checker but will look for errors anyways
-			for i in xrange(4):
-				try:
-					frame = drx.readFrame(fh)
-				except errors.eofError, errors.syncError:
-					done = True
-					break
-					
-				beam,tune,pol = frame.parseID()
-				aStand = 2*(tune-1) + pol
-				
-				if ttFlow[aStand] + ttStep != frame.data.timeTag:
-					print 'Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, frame.data.timeTag/fS, ttFlow[aStand]/fS, ttStep/fS)
-					
-				data[aStand, count[aStand]*4096:(count[aStand]+1)*4096] = frame.data.iq
-				count[aStand] += 1
-				
-			siCount += 1
-			
-			## Have we reached as far as we can simultaneously go?
+			## Check to see where we are
 			if siCount > siCountMax:
-				done = True
+				### Looks like we are done, allow the reader to finish
+				incoming = getFromQueue(readerQ)
+				continue
 				
 			## Apply the sample offset
-			data = data[:,sampleOffset:sampleOffset+4096*chunkSize]
-			
-			## Back up a bit so that we can to the sample offsets properly
-			fh.seek(-drx.FrameSize*4, 1)
-			
-			## Are we done yet?
-			if done:
-				break
+			if sampleOffset != 0:
+				try:
+					dataComb[:,:4096] = dataPrev
+				except NameError:
+					dataComb = numpy.zeros((rawdata.shape[0], rawdata.shape[1]+4096), dtype=rawdata.dtype)
+					dataComb[:,:4096] = dataPrev
+				dataComb[:,4096:] = rawdata
+				dataPrev = dataComb[:,-4096:]
+				rawdata[...] = dataComb[:,sampleOffset:sampleOffset+4096*chunkSize]
 				
 			## FFT
-			rawSpectra = PulsarEngineRaw(data, LFFT)
-			
+			try:
+				rawSpectra = PulsarEngineRaw(rawdata, LFFT, rawSpectra)
+			except NameError:
+				rawSpectra = PulsarEngineRaw(rawdata, LFFT)
+				
 			## Apply the sub-sample offset as a phase rotation
 			if tickOffset != 0:
-				rawSpectra = PhaseRotator(rawSpectra, freq1, freq2, tickOffset/fS)
+				PhaseRotator(rawSpectra, freq1, freq2, tickOffset/fS, rawSpectra)
 				
 			## S-K flagging
 			flag = GenerateMask(rawSpectra)
@@ -554,11 +532,17 @@ def main(args):
 			ff2 = 1.0*(LFFT - weight2.sum()) / LFFT
 			
 			## Detect power
-			data = reduceEngine(rawSpectra)
-			
+			try:
+				redData = reduceEngine(rawSpectra, redData)
+			except NameError:
+				redData = reduceEngine(rawSpectra)
+				
 			## Optimal data scaling
-			bzero, bscale, bdata = OptimizeDataLevels(data, LFFT)
-			
+			try:
+				bzero, bscale, bdata = OptimizeDataLevels(redData, LFFT, bzero, bscale, bdata)
+			except NameError:
+				bzero, bscale, bdata = OptimizeDataLevels(redData, LFFT)
+				
 			## Polarization mangling
 			bzero1 = bzero[:nPols,:].T.ravel()
 			bzero2 = bzero[nPols:,:].T.ravel()
@@ -596,11 +580,24 @@ def main(args):
 				
 			## Update the progress bar and remaining time estimate
 			pbar.inc()
-			sys.stdout.write('%5.1f%% %5.1f%% %s\r' % (ff1*100, ff2*100, pbar.show()))
+			sys.stdout.write('%5.1f%% %5.1f%% %s %2i\r' % (ff1*100, ff2*100, pbar.show(), len(readerQ)))
 			sys.stdout.flush()
 			
+			## Fetch another one
+			incoming = getFromQueue(readerQ)
+			
+		rdr.join()
+		if sampleOffset != 0:
+			del dataComb
+		del rawSpectra
+		del redData
+		del bzero
+		del bscale
+		del bdata
+		
 		# Update the progress bar with the total time used
-		sys.stdout.write('              %s\n' % pbar.show())
+		pbar.amount = pbar.max
+		sys.stdout.write('              %s %2i\n' % (pbar.show(), len(readerQ)))
 		sys.stdout.flush()
 
 

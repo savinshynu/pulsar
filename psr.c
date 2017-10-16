@@ -1,25 +1,22 @@
 #include "Python.h"
 #include <math.h>
 #include <stdio.h>
-#ifdef _MKL
-	#include "fftw3.h"
-#else
-	#include <fftw3.h>
-#endif
-#include <stdlib.h>
 #include <complex.h>
+#include <fftw3.h>
+#include <stdlib.h>
+#include <pthread.h>
 
 #ifdef _OPENMP
 	#include <omp.h>
-	#ifdef _MKL
-		#include "fftw3_mkl.h"
+	
+	// OpenMP scheduling method
+	#ifndef OMP_SCHEDULER
+	#define OMP_SCHEDULER dynamic
 	#endif
 #endif
 
 #include "numpy/arrayobject.h"
-
-#define PI 3.1415926535898
-#define imaginary _Complex_I
+#include "numpy/npy_math.h"
 
 // Dispersion constant in MHz^2 s / pc cm^-3
 #define DCONST (double) 4.148808e3
@@ -44,25 +41,252 @@ void read_wisdom(char *filename, PyObject *m) {
 }
 
 
+/*
+  Core binding function - based off the corresponding bifrost function
+*/
+
+#include <pthread.h>
+
+
+/*
+ setCore - Internal function to bind a thread to a particular core, or unbind
+ it if core is set to -1.  Returns 0 is successful, non-zero otherwise.
+*/         
+
+int setCore(int core) {
+#if defined __linux__ && __linux__
+	int ncore;
+	cpu_set_t cpuset;
+	ncore = sysconf(_SC_NPROCESSORS_ONLN);
+	
+	// Basic validation
+	if( core >= ncore || (core < 0 && core != -1) ) {
+		return -100;
+	}
+	
+	CPU_ZERO(&cpuset);
+	if( core >= 0 ) {
+		CPU_SET(core, &cpuset);
+	} else {
+		for(core=0; core<ncore; ++core) {
+			CPU_SET(core, &cpuset);
+		}
+	}
+	
+	pthread_t tid = pthread_self();
+	return pthread_setaffinity_np(tid, sizeof(cpu_set_t), &cpuset);
+#else
+	return -101;
+#endif
+}
+
+/*
+ getCore - Internal function to get the core binding of a thread.  Returns 
+ 0 is successful, non-zero otherwise.
+*/
+
+int getCore(int* core) {
+#if defined __linux__ && __linux__
+	int ret, c, ncore;
+	cpu_set_t cpuset;
+	ncore = sysconf(_SC_NPROCESSORS_ONLN);
+	
+	pthread_t tid = pthread_self();
+	ret = pthread_getaffinity_np(tid, sizeof(cpu_set_t), &cpuset);
+	if( ret == 0 ) {
+		if( CPU_COUNT(&cpuset) > 1 ) {
+			*core = -1;
+			return 0;
+		} else {
+			for(c=0; c<ncore; ++c ) {
+				if(CPU_ISSET(c, &cpuset)) {
+					*core = c;
+					return 0;
+				}
+			}
+		}
+	}
+	return ret;
+#else
+	return -101;
+#endif
+}
+
+/* getCoreCount - Internal function to return the number of core available.  Returns >=1
+   if successful, <1 otherwise.
+*/
+
+int getCoreCount(void) {
+#if defined __linux__ && __linux__
+	return sysconf(_SC_NPROCESSORS_ONLN);
+#else
+	return -101;
+#endif
+}
+
+static PyObject *BindToCore(PyObject *self, PyObject *args, PyObject *kwds) {
+	int ret, core = -1;
+	
+	if(!PyArg_ParseTuple(args, "i", &core)) {
+		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
+		return NULL;
+	}
+	
+	ret = setCore(core);
+	
+	if(ret == 0) {
+		Py_RETURN_TRUE;
+	} else if(ret == -100) {
+		PyErr_Format(PyExc_ValueError, "Invalid core: %d", core);
+		return NULL;
+	} else if(ret == -101) {
+		PyErr_Warn(PyExc_RuntimeWarning, "Changing of the thread core binding is not supported on this OS");
+		Py_RETURN_FALSE;
+	} else {
+		PyErr_Format(PyExc_RuntimeError, "Cannot change core binding to %d", core);
+		return NULL;
+	}
+}
+
+PyDoc_STRVAR(BindToCore_doc, \
+"Bind the current thread to the specified core.\n\
+\n\
+Input arguments are:\n\
+ * core: scalar int core to bind to\n\
+\n\
+Outputs:\n\
+ * True, if successful\n\
+");
+
+
+static PyObject *BindOpenMPToCores(PyObject *self, PyObject *args, PyObject *kwds) {
+	PyObject *cores, *core;
+	int ret, nthread, t, tid, ncore, old_core, c;
+	
+	if(!PyArg_ParseTuple(args, "O", &cores)) {
+		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
+		return NULL;
+	}
+	
+	if(!PyList_Check(cores)) {
+		PyErr_Format(PyExc_TypeError, "Invalid parameters");
+		return NULL;
+	}
+	
+	nthread = PyList_Size(cores);
+	ncore = getCoreCount();
+	if( ncore == -101 ) {
+		PyErr_Warn(PyExc_RuntimeWarning, "Changing of the thread core binding is not supported on this OS");
+		Py_RETURN_FALSE;
+	}
+	for(t=0; t<nthread; t++) {
+		core = PyList_GetItem(cores, t);
+		if(!PyInt_Check(core)) {
+			PyErr_Format(PyExc_TypeError, "Invalid parameters");
+			return NULL;
+		}
+		c = (int) PyInt_AsLong(core);
+		if( c >= ncore || (c < 0 && c != -1 ) ) {
+			PyErr_Format(PyExc_ValueError, "Invalid core for thread %d: %d", t+1, c);
+			return NULL;
+		}
+	}
+	
+	ret = getCore(&old_core);
+	if(ret == -101) {
+		PyErr_Warn(PyExc_RuntimeWarning, "Changing of the thread core binding is not supported on this OS");
+		Py_RETURN_FALSE;
+	} else if(ret != 0) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot get core binding");
+		return NULL;
+	}
+	
+	ret = setCore(-1);
+	if(ret != 0) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot unbind current thread");
+		return NULL;
+	}
+	
+	#ifdef _OPENMP
+		#pragma omp parallel default(shared) private(tid, core, c)
+		omp_set_num_threads(nthread);
+		
+		#pragma omp parallel for schedule(static, 1)
+		for(t=0; t<nthread; ++t) {
+			tid = omp_get_thread_num();
+			core = PyList_GetItem(cores, tid);
+			c = (int) PyInt_AsLong(core);
+			ret |= setCore(c);
+		}
+	#else
+		ret = -101;
+	#endif
+	if(ret == -101) {
+		PyErr_Warn(PyExc_RuntimeWarning, "Changing of the thread core binding is not supported on this OS");
+		Py_RETURN_FALSE;
+	} else if(ret != 0) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot set all OpenMP thread core bindings");
+		return NULL;
+	}
+	
+	if(old_core != -1) {
+		ret = setCore(old_core);
+		if(ret != 0) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot re-bind current thread to %d", old_core);
+			return NULL;
+		}
+	}
+	
+	Py_RETURN_TRUE;
+}
+
+PyDoc_STRVAR(BindOpenMPToCores_doc, \
+"Bind OpenMP threads to the provided list of cores.\n\
+\n\
+Input arguments are:\n\
+ * cores: list of int cores for OpenMP thread binding\n\
+\n\
+Outputs:\n\
+  * True, if successful\n\
+");
+
+
+/*
+  Complex magnitude squared functions
+*/
+
+double cabs2(double complex z) {
+	return creal(z)*creal(z) + cimag(z)*cimag(z);
+}
+
+float cabs2f(float complex z) {
+	return crealf(z)*crealf(z) + cimagf(z)*cimagf(z);
+}
+
+
 static PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
-	PyObject *signals, *signalsF;
+	PyObject *signals, *signalsF=NULL;
 	PyArrayObject *data, *dataF;
 	int nChan = 64;
 	
-	long i, j, k, nStand, nSamps, nFFT;
+	long ij, i, j, k, nStand, nSamps, nFFT;
 	
-	static char *kwlist[] = {"signals", "LFFT", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|i", kwlist, &signals, &nChan)) {
+	static char *kwlist[] = {"signals", "LFFT", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|iO", kwlist, &signals, &nChan, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
 	
 	// Bring the data into C and make it usable
 	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_COMPLEX64, 2, 2);
+	if( data == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input signals array to 2-D complex64");
+		return NULL;
+	}
 	
 	// Get the properties of the data
-	nStand = (long) data->dimensions[0];
-	nSamps = (long) data->dimensions[1];
+	nStand = (long) PyArray_DIM(data, 0);
+	nSamps = (long) PyArray_DIM(data, 1);
 	
 	// Find out how large the output array needs to be and initialize it
 	nFFT = nSamps / nChan;
@@ -70,17 +294,45 @@ static PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds)
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
 	dims[2] = (npy_intp) (nSamps/nChan);
-	dataF = (PyArrayObject*) PyArray_SimpleNew(3, dims, NPY_COMPLEX64);
-	if(dataF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-		Py_XDECREF(data);
-		return NULL;
+	if( signalsF != NULL ) {
+		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_COMPLEX64, 3, 3);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 3-D complex64");
+			Py_XDECREF(data);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of stands");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of channels");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 2) != dims[2]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of FFT windows");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+	} else {
+		dataF = (PyArrayObject*) PyArray_ZEROS(3, dims, NPY_COMPLEX64, 0);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			Py_XDECREF(data);
+			return NULL;
+		}
 	}
-	PyArray_FILLWBYTE(dataF, 0);
+	
+	Py_BEGIN_ALLOW_THREADS
 	
 	// Create the FFTW plan
-	fftwf_complex *inP, *in;
-	inP = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * nChan);
+	float complex *inP, *in;
+	inP = (float complex*) fftwf_malloc(sizeof(float complex) * nChan);
 	fftwf_plan p;
 	p = fftwf_plan_dft_1d(nChan, inP, inP, FFTW_FORWARD, FFTW_ESTIMATE);
 	
@@ -88,50 +340,51 @@ static PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds)
 	long secStart;
 	float complex *a;
 	float complex *b;
-	a = (float complex *) data->data;
-	b = (float complex *) dataF->data;
+	a = (float complex *) PyArray_DATA(data);
+	b = (float complex *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
-		#ifdef _MKL
-			fftw3_mkl.number_of_user_threads = omp_get_num_threads();
-		#endif
+		omp_set_dynamic(0);
 		#pragma omp parallel default(shared) private(in, secStart, i, j, k)
 	#endif
 	{
+		in = (float complex*) fftwf_malloc(sizeof(float complex) * nChan);
+		
 		#ifdef _OPENMP
-			#pragma omp for schedule(dynamic)
+			#pragma omp for schedule(OMP_SCHEDULER)
 		#endif
-		for(j=0; j<nFFT; j++) {
-			in = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * nChan);
+		for(ij=0; ij<nStand*nFFT; ij++) {
+			i = ij / nFFT;
+			j = ij % nFFT;
 			
-			for(i=0; i<nStand; i++) {
-				secStart = nSamps * i + nChan*j;
-				
-				for(k=0; k<nChan; k++) {
-					in[k][0] = creal(*(a + secStart + k));
-					in[k][1] = cimag(*(a + secStart + k));
-				}
-				
-				fftwf_execute_dft(p, in, in);
-				
-				for(k=0; k<nChan/2; k++) {
-					*(b + nChan*nFFT*i + nFFT*k + j)  = (in[k+nChan/2+nChan%2][0] + in[k+nChan/2+nChan%2][1]*imaginary) / sqrt(nChan);
-				}
-				for(k=nChan/2; k<nChan; k++) {
-					*(b + nChan*nFFT*i + nFFT*k + j)  = (in[k-nChan/2][0] + in[k-nChan/2][1]*imaginary) / sqrt(nChan);
-				}
+			secStart = nSamps * i + nChan*j;
+			
+			for(k=0; k<nChan; k++) {
+				in[k]  = *(a + secStart + k);
 			}
-			fftwf_free(in);
+			
+			fftwf_execute_dft(p, in, in);
+			
+			for(k=0; k<nChan/2+nChan%2; k++) {
+				*(b + nFFT*nChan*i + nFFT*(k + nChan/2) + j) = in[k] / sqrt(nChan);
+			}
+			for(k=nChan/2+nChan%2; k<nChan; k++) {
+				*(b + nFFT*nChan*i + nFFT*(k - nChan/2 - nChan%2) + j) = in[k] / sqrt(nChan);
+			}
 		}
+		
+		fftwf_free(in);
 	}
 	fftwf_destroy_plan(p);
 	fftwf_free(inP);
 	
-	Py_XDECREF(data);
+	Py_END_ALLOW_THREADS
 	
 	signalsF = Py_BuildValue("O", PyArray_Return(dataF));
+	
+	Py_XDECREF(data);
 	Py_XDECREF(dataF);
-
+	
 	return signalsF;
 }
 
@@ -151,31 +404,37 @@ Outputs:\n\
 
 
 static PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject *kwds) {
-	PyObject *signals, *window, *signalsF;
-	PyArrayObject *data, *win, *dataF;
+	PyObject *signals, *window, *signalsF=NULL;
+	PyArrayObject *data=NULL, *win=NULL, *dataF=NULL;
 	int nChan = 64;
 	
-	long i, j, k, nStand, nSamps, nFFT;
+	long ij, i, j, k, nStand, nSamps, nFFT;
 	
-	static char *kwlist[] = {"signals", "window", "LFFT", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OO|i", kwlist, &signals, &window, &nChan)) {
+	static char *kwlist[] = {"signals", "window", "LFFT", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OO|iO", kwlist, &signals, &window, &nChan, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
-		return NULL;
+		goto fail;
 	}
 	
 	// Bring the data into C and make it usable
 	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_COMPLEX64, 2, 2);
-	win  = (PyArrayObject *) PyArray_ContiguousFromObject(window,  NPY_FLOAT64,   1, 1);
+	win  = (PyArrayObject *) PyArray_ContiguousFromObject(window,  NPY_DOUBLE,    1, 1);
+	if( data == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input signals array to 2-D complex64");
+		goto fail;
+	}
+	if( win == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input window array to 1-D double");
+		goto fail;
+	}
 	
 	// Get the properties of the data
-	nStand = (long) data->dimensions[0];
-	nSamps = (long) data->dimensions[1];
+	nStand = (long) PyArray_DIM(data, 0);
+	nSamps = (long) PyArray_DIM(data, 1);
 	
-	if( win->dimensions[0] != nChan ) {
+	if( PyArray_DIM(win, 0) != nChan ) {
 		PyErr_Format(PyExc_RuntimeError, "Window length does not match requested FFT length");
-		Py_XDECREF(data);
-		Py_XDECREF(win);
-		return NULL;
+		goto fail;
 	}
 	
 	// Find out how large the output array needs to be and initialize it
@@ -184,18 +443,45 @@ static PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject 
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
 	dims[2] = (npy_intp) (nSamps/nChan);
-	dataF = (PyArrayObject*) PyArray_SimpleNew(3, dims, NPY_COMPLEX64);
-	if(dataF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-		Py_XDECREF(data);
-		Py_XDECREF(win);
-		return NULL;
+	if( signalsF != NULL ) {
+		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_COMPLEX64, 3, 3);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 3-D complex64");
+			Py_XDECREF(data);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of stands");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of channels");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 2) != dims[2]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of FFT windows");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+	} else {
+		dataF = (PyArrayObject*) PyArray_ZEROS(3, dims, NPY_COMPLEX64, 0);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			Py_XDECREF(data);
+			return NULL;
+		}
 	}
-	PyArray_FILLWBYTE(dataF, 0);
+	
+	Py_BEGIN_ALLOW_THREADS
 	
 	// Create the FFTW plan
-	fftwf_complex *inP, *in;
-	inP = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * nChan);
+	float complex *inP, *in;
+	inP = (float complex*) fftwf_malloc(sizeof(float complex) * nChan);
 	fftwf_plan p;
 	p = fftwf_plan_dft_1d(nChan, inP, inP, FFTW_FORWARD, FFTW_ESTIMATE);
 	
@@ -204,53 +490,62 @@ static PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject 
 	float complex *a;
 	float complex *b;
 	double *c;
-	a = (float complex *) data->data;
-	b = (float complex *) dataF->data;
-	c = (double *) win->data;
+	a = (float complex *) PyArray_DATA(data);
+	b = (float complex *) PyArray_DATA(dataF);
+	c = (double *) PyArray_DATA(win);
 	
 	#ifdef _OPENMP
-		#ifdef _MKL
-			fftw3_mkl.number_of_user_threads = omp_get_num_threads();
-		#endif
+		omp_set_dynamic(0);
 		#pragma omp parallel default(shared) private(in, secStart, i, j, k)
 	#endif
 	{
+		in = (float complex*) fftwf_malloc(sizeof(float complex) * nChan);
+		
 		#ifdef _OPENMP
-			#pragma omp for schedule(dynamic)
+			#pragma omp for schedule(OMP_SCHEDULER)
 		#endif
-		for(j=0; j<nFFT; j++) {
-			in = (fftwf_complex*) fftwf_malloc(sizeof(fftwf_complex) * nChan);
+		for(ij=0; ij<nStand*nFFT; ij++) {
+			i = ij / nFFT;
+			j = ij % nFFT;
 			
-			for(i=0; i<nStand; i++) {
-				secStart = nSamps * i + nChan*j;
-				
-				for(k=0; k<nChan; k++) {
-					in[k][0] = *(c + k) * creal(*(a + secStart + k));
-					in[k][1] = *(c + k) * cimag(*(a + secStart + k));
-				}
-				
-				fftwf_execute_dft(p, in, in);
-				
-				for(k=0; k<nChan/2; k++) {
-					*(b + nChan*nFFT*i + nFFT*k + j)  = (in[k+nChan/2+nChan%2][0] + in[k+nChan/2+nChan%2][1]*imaginary) / sqrt(nChan);
-				}
-				for(k=nChan/2; k<nChan; k++) {
-					*(b + nChan*nFFT*i + nFFT*k + j)  = (in[k-nChan/2][0] + in[k-nChan/2][1]*imaginary) / sqrt(nChan);
-				}
+			secStart = nSamps * i + nChan*j;
+			
+			for(k=0; k<nChan; k++) {
+				in[k]  = *(a + secStart + k);
+				in[k] *= *(c + k);
 			}
-			fftwf_free(in);
+			
+			fftwf_execute_dft(p, in, in);
+			
+			for(k=0; k<nChan/2+nChan%2; k++) {
+				*(b + nFFT*nChan*i + nFFT*(k + nChan/2) + j) = in[k] / sqrt(nChan);
+			}
+			for(k=nChan/2+nChan%2; k<nChan; k++) {
+				*(b + nFFT*nChan*i + nFFT*(k - nChan/2 - nChan%2) + j) = in[k] / sqrt(nChan);
+			}
 		}
+		
+		fftwf_free(in);
 	}
 	fftwf_destroy_plan(p);
 	fftwf_free(inP);
 	
-	Py_XDECREF(data);
-	Py_XDECREF(win);
+	Py_END_ALLOW_THREADS
 	
 	signalsF = Py_BuildValue("O", PyArray_Return(dataF));
+	
+	Py_XDECREF(data);
+	Py_XDECREF(win);
 	Py_XDECREF(dataF);
-
+	
 	return signalsF;
+	
+fail:
+	Py_XDECREF(data);
+	Py_XDECREF(win);
+	Py_XDECREF(dataF);
+	
+	return NULL;
 }
 
 PyDoc_STRVAR(PulsarEngineRawWindow_doc, \
@@ -271,41 +566,48 @@ Outputs:\n\
 
 
 static PyObject *PhaseRotator(PyObject *self, PyObject *args, PyObject *kwds) {
-	PyObject *signals, *f1, *f2, *signalsF;
-	PyArrayObject *data, *freq1, *freq2, *dataF;
+	PyObject *signals, *f1, *f2, *signalsF=NULL;
+	PyArrayObject *data=NULL, *freq1=NULL, *freq2=NULL, *dataF=NULL;
 	double delay;	
 
-	long i, j, k, nStand, nSamps, nChan, nFFT;
+	long ij, i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	if(!PyArg_ParseTuple(args, "OOOd", &signals, &f1, &f2, &delay)) {
+	static char *kwlist[] = {"signals", "freq1", "freq2", "delays", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OOOd|O", kwlist, &signals, &f1, &f2, &delay, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
-		return NULL;
+		goto fail;
 	}
 	
 	// Bring the data into C and make it usable
 	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_COMPLEX64, 3, 3);
-	freq1 = (PyArrayObject *) PyArray_ContiguousFromObject(f1, NPY_FLOAT64, 1, 1);
-	freq2 = (PyArrayObject *) PyArray_ContiguousFromObject(f2, NPY_FLOAT64, 1, 1);
+	freq1 = (PyArrayObject *) PyArray_ContiguousFromObject(f1, NPY_DOUBLE, 1, 1);
+	freq2 = (PyArrayObject *) PyArray_ContiguousFromObject(f2, NPY_DOUBLE, 1, 1);
+	if( data == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input signals array to 3-D complex64");
+		goto fail;
+	}
+	if( freq1 == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input f1 array to 1-D double");
+		goto fail;
+	}
+	if( freq1 == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input f2 array to 1-D double");
+		goto fail;
+	}
 	
 	// Get the properties of the data
-	nStand = (long) data->dimensions[0];
-	nChan  = (long) data->dimensions[1];
-	nFFT   = (long) data->dimensions[2];
+	nStand = (long) PyArray_DIM(data, 0);
+	nChan  = (long) PyArray_DIM(data, 1);
+	nFFT   = (long) PyArray_DIM(data, 2);
 	
 	// Validate
-	if( freq1->dimensions[0] != nChan ) {
+	if( PyArray_DIM(freq1, 0) != nChan ) {
 		PyErr_Format(PyExc_ValueError, "Frequency array 1 has different dimensions than rawSpectra");
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		return NULL;
+		goto fail;
 	}
-	if( freq2->dimensions[0] != nChan ) {
+	if( PyArray_DIM(freq2, 0) != nChan ) {
 		PyErr_Format(PyExc_ValueError, "Frequency array 2 has different dimensions than rawSpectra");
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		return NULL;
+		goto fail;
 	}	
 	
 	// Find out how large the output array needs to be and initialize it
@@ -313,57 +615,94 @@ static PyObject *PhaseRotator(PyObject *self, PyObject *args, PyObject *kwds) {
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
 	dims[2] = (npy_intp) nFFT;
-	dataF = (PyArrayObject*) PyArray_SimpleNew(3, dims, NPY_COMPLEX64);
-	if(dataF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		return NULL;
+	if(signalsF != NULL) {
+		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_COMPLEX64, 3, 3);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 3-D complex64");
+			Py_XDECREF(data);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of stands");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of channels");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 2) != dims[2]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of FFT windows");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+	} else {
+		dataF = (PyArrayObject*) PyArray_ZEROS(3, dims, NPY_COMPLEX64, 0);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			goto fail;
+		}
 	}
-	PyArray_FILLWBYTE(dataF, 0);
+	
+	Py_BEGIN_ALLOW_THREADS
 	
 	// Go!
 	long secStart;
 	double tempF;
 	float complex *a, *d;
 	double *b, *c;
-	a = (float complex *) data->data;
-	b = (double *) freq1->data;
-	c = (double *) freq2->data;
-	d = (float complex *) dataF->data;
+	a = (float complex *) PyArray_DATA(data);
+	b = (double *) PyArray_DATA(freq1);
+	c = (double *) PyArray_DATA(freq2);
+	d = (float complex *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
+		omp_set_dynamic(0);
 		#pragma omp parallel default(shared) private(secStart, i, j, k, tempF)
 	#endif
 	{
 		#ifdef _OPENMP
-			#pragma omp for schedule(dynamic)
+			#pragma omp for schedule(OMP_SCHEDULER)
 		#endif
-		for(j=0; j<nChan; j++) {
-			for(i=0; i<nStand; i+=1) {
-				secStart = nSamps*i + nFFT*j;
-				if( i/2 == 0 ) {
-					tempF = *(b + j);
-				} else {
-					tempF = *(c + j);
-				}
-				
-				for(k=0; k<nFFT; k++) {
-					*(d + secStart + k) = *(a + secStart + k) * cexp(2*imaginary*PI*tempF*delay);
-				}
+		for(ij=0; ij<nStand*nChan; ij++) {
+			i = ij / nChan;
+			j = ij % nChan;
+			
+			secStart = nSamps*i + nFFT*j;
+			if( i/2 == 0 ) {
+				tempF = *(b + j);
+			} else {
+				tempF = *(c + j);
+			}
+			
+			for(k=0; k<nFFT; k++) {
+				*(d + secStart + k) = *(a + secStart + k) * cexp(2*NPY_PI*_Complex_I*tempF*delay);
 			}
 		}
 	}
 	
+	Py_END_ALLOW_THREADS
+	
+	signalsF = Py_BuildValue("O", PyArray_Return(dataF));
+	
 	Py_XDECREF(data);
 	Py_XDECREF(freq1);
 	Py_XDECREF(freq2);
-	
-	signalsF = Py_BuildValue("O", PyArray_Return(dataF));
 	Py_XDECREF(dataF);
-
+	
 	return signalsF;
+	
+fail:
+	Py_XDECREF(data);
+	Py_XDECREF(freq1);
+	Py_XDECREF(freq2);
+	Py_XDECREF(dataF);
+	
+	return NULL;
 }
 
 PyDoc_STRVAR(PhaseRotator_doc, \
@@ -389,7 +728,7 @@ static PyObject *ComputeSKMask(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *signals, *signalsF;
 	PyArrayObject *data, *dataF;
 	double lower, upper;
-	long i, j, k, nStand, nSamps, nChan, nFFT;
+	long ij, i, j, k, nStand, nSamps, nChan, nFFT;
 	
 	if(!PyArg_ParseTuple(args, "Odd", &signals, &lower, &upper)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
@@ -397,71 +736,78 @@ static PyObject *ComputeSKMask(PyObject *self, PyObject *args, PyObject *kwds) {
 	}
 	// Bring the data into C and make it usable
 	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_COMPLEX64, 3, 3);
+	if( data == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input signals array to 3-D complex64");
+		return NULL;
+	}
 	
 	// Get the properties of the data
-	nStand = (long) data->dimensions[0];
-	nChan  = (long) data->dimensions[1];
-	nFFT   = (long) data->dimensions[2];
+	nStand = (long) PyArray_DIM(data, 0);
+	nChan  = (long) PyArray_DIM(data, 1);
+	nFFT   = (long) PyArray_DIM(data, 2);
 	
 	// Find out how large the output array needs to be and initialize it
 	nSamps = nChan*nFFT;
 	npy_intp dims[2];
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
-	dataF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+	dataF = (PyArrayObject*) PyArray_ZEROS(2, dims, NPY_FLOAT32, 0);
 	if(dataF == NULL) {
 		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
 		Py_XDECREF(data);
 		return NULL;
 	}
-	PyArray_FILLWBYTE(dataF, 0);
+	
+	Py_BEGIN_ALLOW_THREADS
 	
 	// Go!
 	long secStart;
-	double tempV, tempV2, temp2V;
+	float tempV, tempV2, temp2V;
 	float complex *a;
 	float *b;
-	a = (float complex *) data->data;
-	b = (float *) dataF->data;
+	a = (float complex *) PyArray_DATA(data);
+	b = (float *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
+		omp_set_dynamic(0);
 		#pragma omp parallel default(shared) private(secStart, i, j, k, tempV, tempV2, temp2V)
 	#endif
 	{
 		#ifdef _OPENMP
-			#pragma omp for schedule(dynamic)
+			#pragma omp for schedule(OMP_SCHEDULER)
 		#endif
-		for(j=1; j<nChan-1; j++) {
-			for(i=0; i<nStand; i++) {
-				secStart = nSamps*i + nFFT*j;
-				
-				tempV2 = 0.0;
-				temp2V = 0.0;
-				for(k=0; k<nFFT; k++) {
-					tempV  = creal(*(a + secStart + k))*creal(*(a + secStart + k));
-					tempV += cimag(*(a + secStart + k))*cimag(*(a + secStart + k));
-
-					temp2V += tempV*tempV;
-					tempV2 += tempV;
-				}
-				
-				tempV  = nFFT*temp2V / (tempV2*tempV2) - 1.0;
-				tempV *= (nFFT + 1.0)/(nFFT - 1.0);
-				
-				if( tempV < lower || tempV > upper ) {
-					*(b + nChan*i + j) = 0.0;
-				} else {
-					*(b + nChan*i + j) = 1.0;
-				}
+		for(ij=0; ij<nStand*nChan; ij++) {
+			i = ij / nChan;
+			j = ij % nChan;
+			
+			secStart = nSamps*i + nFFT*j;
+			
+			tempV2 = 0.0;
+			temp2V = 0.0;
+			for(k=0; k<nFFT; k++) {
+				tempV  = cabs2f(*(a + secStart + k));
+				temp2V += tempV*tempV;
+				tempV2 += tempV;
+			}
+			
+			tempV  = nFFT*temp2V / (tempV2*tempV2) - 1.0;
+			tempV *= (nFFT + 1.0)/(nFFT - 1.0);
+			
+			if( tempV < lower || tempV > upper ) {
+				*(b + nChan*i + j) = 0.0;
+			} else {
+				*(b + nChan*i + j) = 1.0;
 			}
 		}
 	}
 	
-	Py_XDECREF(data);
+	Py_END_ALLOW_THREADS
 	
 	signalsF = Py_BuildValue("O", PyArray_Return(dataF));
+	
+	Py_XDECREF(data);
 	Py_XDECREF(dataF);
-
+	
 	return signalsF;
 }
 
@@ -484,7 +830,7 @@ static PyObject *ComputePseudoSKMask(PyObject *self, PyObject *args, PyObject *k
 	PyObject *signals, *signalsF;
 	PyArrayObject *data, *dataF;
 	double lower, upper;
-	long i, j, k, nStand, nSamps, nChan, nFFT, skN;
+	long ij, i, j, k, nStand, nSamps, nChan, nFFT, skN;
 	
 	if(!PyArg_ParseTuple(args, "Olldd", &signals, &nChan, &skN, &lower, &upper)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
@@ -492,70 +838,79 @@ static PyObject *ComputePseudoSKMask(PyObject *self, PyObject *args, PyObject *k
 	}
 	
 	// Bring the data into C and make it usable
-	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_FLOAT64, 2, 2);
+	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_DOUBLE, 2, 2);
+	if( data == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input signals array to 3-D complex64");
+		return NULL;
+	}
 	
 	// Get the properties of the data
-	nStand = (long) data->dimensions[0];
-	nSamps  = (long) data->dimensions[1];
+	nStand = (long) PyArray_DIM(data, 0);
+	nSamps  = (long) PyArray_DIM(data, 1);
 	nFFT = nSamps / nChan;
 	
 	// Find out how large the output array needs to be and initialize it
 	npy_intp dims[2];
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
-	dataF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_FLOAT32);
+	dataF = (PyArrayObject*) PyArray_ZEROS(2, dims, NPY_FLOAT32, 0);
 	if(dataF == NULL) {
 		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
 		Py_XDECREF(data);
 		return NULL;
 	}
-	PyArray_FILLWBYTE(dataF, 0);
+	
+	Py_BEGIN_ALLOW_THREADS
 	
 	// Go!
 	long secStart;
 	double tempV, temp2V, tempV2;
 	double *a;
 	float *b;
-	a = (double *) data->data;
-	b = (float *) dataF->data;
+	a = (double *) PyArray_DATA(data);
+	b = (float *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
+		omp_set_dynamic(0);
 		#pragma omp parallel default(shared) private(secStart, i, j, k, tempV, temp2V, tempV2)
 	#endif
 	{
 		#ifdef _OPENMP
-			#pragma omp for schedule(dynamic)
+			#pragma omp for schedule(OMP_SCHEDULER)
 		#endif
-		for(j=1; j<nChan-1; j++) {
-			for(i=0; i<nStand; i++) {
-				secStart = nSamps*i;
-				
-				temp2V = 0.0;
-				tempV2 = 0.0;
-				for(k=0; k<nFFT; k++) {
-					tempV  = *(a + secStart + nChan*k + j);
+		for(ij=0; ij<nStand*nChan; ij++) {
+			i = ij / nChan;
+			j = ij % nChan;
+			
+			secStart = nSamps*i;
+			
+			temp2V = 0.0;
+			tempV2 = 0.0;
+			for(k=0; k<nFFT; k++) {
+				tempV  = *(a + secStart + nChan*k + j);
 
-					temp2V += tempV*tempV;
-					tempV2 += tempV;
-				}
-				
-				tempV  = nFFT*temp2V / (tempV2*tempV2) - 1.0;
-				tempV *= (nFFT*skN + 1.0)/(nFFT - 1.0);
-				
-				if( tempV < lower || tempV > upper ) {
-					*(b + nChan*i + j) = 0.0;
-				} else {
-					*(b + nChan*i + j) = 1.0;
-				}
+				temp2V += tempV*tempV;
+				tempV2 += tempV;
+			}
+			
+			tempV  = nFFT*temp2V / (tempV2*tempV2) - 1.0;
+			tempV *= (nFFT*skN + 1.0)/(nFFT - 1.0);
+			
+			if( tempV < lower || tempV > upper ) {
+				*(b + nChan*i + j) = 0.0;
+			} else {
+				*(b + nChan*i + j) = 1.0;
 			}
 		}
 	}
 	
-	Py_XDECREF(data);
+	Py_END_ALLOW_THREADS
 	
 	signalsF = Py_BuildValue("O", PyArray_Return(dataF));
+	
+	Py_XDECREF(data);
 	Py_XDECREF(dataF);
-
+	
 	return signalsF;
 }
 
@@ -600,31 +955,19 @@ long getCoherentSampleSize(double centralFreq, double sampleRate, double DM) {
 
 
 /*
- getFFTFreqs - Compute the frequencies for a collection of FFT channels.  Based on
- the numpy.fft.fftfreqs function.
+ getFFTChannelFreq - Compute the frequency of a given FFT channel.
 */
 
-void getFFTFreqs(long LFFT, double centralFreq, double sampleRate, double *freq) {
-	long i, N;
+double getFFTChannelFreq(long i, long LFFT, double centralFreq, double sampleRate) {
+	long N;
 	double val;
 	
 	N = (LFFT-1) / 2 + 1;
 	val = sampleRate / (double) LFFT;
-	
-	for(i=0; i<N; i++) {
-		// Relative frequency
-		*(freq + i) = i * val;
-		
-		// Add in the center
-		*(freq + i) += centralFreq;
-	}
-	
-	for(i=-(LFFT/2); i<0; i++) {
-		// Relative frequency
-		*(freq + i + (LFFT/2) + N) = i*val;
-		
-		// Add in the center
-		*(freq + i + (LFFT/2) + N) += centralFreq;
+	if( i < N ) {
+		return i * val + centralFreq;
+	} else { 
+		return (i - N - LFFT/2) * val + centralFreq;
 	}
 }
 
@@ -635,285 +978,159 @@ void getFFTFreqs(long LFFT, double centralFreq, double sampleRate, double *freq)
  Coherent Dedispersion, Polarimetry, and Timing" By Stairs, I. H.
 */
 
-void chirpFunction(long LFFT, double *freq, double DM, float complex *chirp) {
+void chirpFunction(long LFFT, double centralFreq, double sampleRate, double DM, float complex *chirp) {
 	int i;
-	double *freqMHz;
+	double freqMHz;
 	double fMHz0, fMHz1;
 	
-	// Allocate the space for freqMHz, and fMHz1
-	freqMHz = (double *) malloc(LFFT*sizeof(double));
-	
 	// Compute the frequencies in MHz and find the average frequency
-	fMHz0 = 0.0;
-	for(i=0; i<LFFT; i++) {
-		*(freqMHz + i) = *(freq + i) / 1e6;
-		fMHz0 += *(freqMHz+ i);
+	if( LFFT % 2 == 0 ) {
+		fMHz0 = (centralFreq - sampleRate / (double) LFFT / 2.0) / 1e6;
+	} else {
+		fMHz0 = centralFreq / 1e6;
 	}
-	fMHz0 /= (double) LFFT;
+// 	fMHz0 = 0.0;
+// 	for(i=0; i<LFFT; i++) {
+// 		fMHz0 += getFreq(i, LFFT, centralFreq, sampleRate) / 1e6;
+// 	}
+// 	fMHz0 /= (double) LFFT;
 	
 	// Compute the chirp
 	for(i=0; i<LFFT; i++) {
-		fMHz1 = *(freqMHz + i) - fMHz0;
-		*(chirp + i) = cexp(-2.0*imaginary*PI*DCONST*1e6 * DM*fMHz1*fMHz1 / (fMHz0*fMHz0* *(freqMHz + i)));
+		freqMHz = getFFTChannelFreq(i, LFFT, centralFreq, sampleRate) / 1e6;
+		fMHz1 = freqMHz - fMHz0;
+		*(chirp + i) = cexp(-2.0*NPY_PI*_Complex_I*DCONST*1e6 * DM*fMHz1*fMHz1 / (fMHz0*fMHz0* freqMHz));
 	}
-	
-	// Cleanup
-	free(freqMHz);
 }
 
 
 static PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) {
-	PyObject *drxTime, *drxData, *spectraFreq1, *spectraFreq2, *prevTime, *prevData, *nextTime, *nextData, *drxDataF;
-	PyArrayObject *time, *data, *freq1, *freq2, *pTime, *pData, *nTime, *nData, *timeF, *dataF;
+	PyObject *drxData, *spectraFreq1, *spectraFreq2, *prevData, *nextData, *drxDataF=NULL;
+	PyArrayObject *data=NULL, *freq1=NULL, *freq2=NULL;
+	PyArrayObject *pData=NULL, *nData=NULL, *dataF=NULL;
 	double sRate, DM;
-
+	
 	long i, j, k, l, nStand, nChan, nFFT;
 	
-	if(!PyArg_ParseTuple(args, "OOOOddOOOO", &drxTime, &drxData, &spectraFreq1, &spectraFreq2, &sRate, &DM, &prevTime, &prevData, &nextTime, &nextData)) {
+	static char *kwlist[] = {"rawSpectra", "freq1", "freq2", "sampleRate", "DM", "prevRawSpectra", "nextRawSpectra", "outRawSpectra", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OOOddOO|O", kwlist, &drxData, &spectraFreq1, &spectraFreq2, &sRate, &DM, &prevData, &nextData, &drxDataF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
-		return NULL;
+		goto fail;
 	}
 	
 	// Bring the data into C and make it usable
-	time = (PyArrayObject *) PyArray_ContiguousFromObject(drxTime, NPY_FLOAT64, 2, 2);
 	data = (PyArrayObject *) PyArray_ContiguousFromObject(drxData, NPY_COMPLEX64, 3, 3);
-	freq1 = (PyArrayObject *) PyArray_ContiguousFromObject(spectraFreq1, NPY_FLOAT64, 1, 1);
-	freq2 = (PyArrayObject *) PyArray_ContiguousFromObject(spectraFreq2, NPY_FLOAT64, 1, 1);
-	pTime = (PyArrayObject *) PyArray_ContiguousFromObject(prevTime, NPY_FLOAT64, 2, 2);
+	freq1 = (PyArrayObject *) PyArray_ContiguousFromObject(spectraFreq1, NPY_DOUBLE, 1, 1);
+	freq2 = (PyArrayObject *) PyArray_ContiguousFromObject(spectraFreq2, NPY_DOUBLE, 1, 1);
 	pData = (PyArrayObject *) PyArray_ContiguousFromObject(prevData, NPY_COMPLEX64, 3, 3);
-	nTime = (PyArrayObject *) PyArray_ContiguousFromObject(nextTime, NPY_FLOAT64, 2, 2);
 	nData = (PyArrayObject *) PyArray_ContiguousFromObject(nextData, NPY_COMPLEX64, 3, 3);
+	if( data == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input drxData array to 3-D complex64");
+		goto fail;
+	}
+	if( freq1 == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input spectraFreq1 to 1-D double");
+		goto fail;
+	}
+	if( freq2 == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input spectraFreq2 to 1-D double");
+		goto fail;
+	}
+	if( pData == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input prevData array to 3-D complex64");
+		goto fail;
+	}
+	if( nData == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input nextData array to 3-D complex64");
+		goto fail;
+	}
 	
 	// Get the properties of the data
-	nStand = (long) data->dimensions[0];
-	nChan  = (long) data->dimensions[1];
-	nFFT   = (long) data->dimensions[2];
+	nStand = (long) PyArray_DIM(data, 0);
+	nChan  = (long) PyArray_DIM(data, 1);
+	nFFT   = (long) PyArray_DIM(data, 2);
 	
 	// Validate
-	if( time->dimensions[0] != nStand ) {
-		PyErr_Format(PyExc_ValueError, "time array has different stand dimension than rawSpectra");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
-	}
-	if( time->dimensions[1] != nFFT ) {
-		PyErr_Format(PyExc_ValueError, "time array has different FFT count dimension than rawSpectra");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
-	}
-	
-	if( freq1->dimensions[0] != nChan ) {
+	if( PyArray_DIM(freq1, 0) != nChan ) {
 		PyErr_Format(PyExc_ValueError, "freq1 array has different dimensions than rawSpectra");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
+		goto fail;
 	}
-	if( freq2->dimensions[0] != nChan ) {
+	if( PyArray_DIM(freq2, 0) != nChan ) {
 		PyErr_Format(PyExc_ValueError, "freq2 array has different dimensions than rawSpectra");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
+		goto fail;
 	}
 	
-	if( time->dimensions[0] != pTime->dimensions[0] ) {
-		PyErr_Format(PyExc_ValueError, "prevTime array has different stand dimension than time");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
-	}
-	if( time->dimensions[1] != pTime->dimensions[1] ) {
-		PyErr_Format(PyExc_ValueError, "prevTime array has different FFT count dimension than time");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
-	}
-	if( time->dimensions[0] != nTime->dimensions[0] ) {
-		PyErr_Format(PyExc_ValueError, "nextTime array has different stand dimension than time");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
-	}
-	if( time->dimensions[1] != nTime->dimensions[1] ) {
-		PyErr_Format(PyExc_ValueError, "nextTime array has different FFT count dimension than time");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
-	}
-	
-	if( data->dimensions[0] != pData->dimensions[0] ) {
+	if( PyArray_DIM(data, 0) != PyArray_DIM(pData, 0) ) {
 		PyErr_Format(PyExc_ValueError, "prevRawSpectra array has different stand dimension than rawSpectra");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
+		goto fail;
 	}
-	if( data->dimensions[1] != pData->dimensions[1] ) {
+	if( PyArray_DIM(data, 1) != PyArray_DIM(pData, 1) ) {
 		PyErr_Format(PyExc_ValueError, "prevRawSpectra array has different channel dimension than rawSpectra");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
+		goto fail;
 	}
-	if( data->dimensions[2] != pData->dimensions[2] ) {
+	if( PyArray_DIM(data, 2) != PyArray_DIM(pData, 2) ) {
 		PyErr_Format(PyExc_ValueError, "prevRawSpectra array has different FFT count dimension than rawSpectra");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
+		goto fail;
 	}
-	if( data->dimensions[0] != nData->dimensions[0] ) {
+	if( PyArray_DIM(data, 0) != PyArray_DIM(nData, 0) ) {
 		PyErr_Format(PyExc_ValueError, "nextRawSpectra array has different stand dimension than rawSpectra");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
+		goto fail;
 	}
-	if( data->dimensions[1] != nData->dimensions[1] ) {
+	if( PyArray_DIM(data, 1) != PyArray_DIM(nData, 1) ) {
 		PyErr_Format(PyExc_ValueError, "nextRawSpectra array has different channel dimension than rawSpectra");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
+		goto fail;
 	}
-	if( data->dimensions[2] != nData->dimensions[2] ) {
+	if( PyArray_DIM(data, 2) != PyArray_DIM(nData, 2) ) {
 		PyErr_Format(PyExc_ValueError, "nextRawSpectra array has different FFT count dimension than rawSpectra");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
+		goto fail;
 	}
 	
 	// Find out how large the output arrays needs to be and initialize then
-	npy_intp dimsT[2];
-	dimsT[0] = (npy_intp) nStand;
-	dimsT[1] = (npy_intp) nFFT;
-	timeF = (PyArrayObject *) PyArray_SimpleNew(2, dimsT, NPY_FLOAT64);
-	if(timeF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output time array");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		return NULL;
+	npy_intp dims[3];
+	dims[0] = (npy_intp) nStand;
+	dims[1] = (npy_intp) nChan;
+	dims[2] = (npy_intp) nFFT;
+	if( drxDataF != NULL ) {
+		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(drxDataF, NPY_COMPLEX64, 3, 3);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output outRawSpectra array to 3-D complex64");
+			goto fail;
+		}
+		if(PyArray_DIM(dataF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "outRawSpectra has an unexpected number of stands");
+			goto fail;
+		}
+		if(PyArray_DIM(dataF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "outRawSpectra has an unexpected number of channels");
+			goto fail;
+		}
+		if(PyArray_DIM(dataF, 2) != dims[2]) {
+			PyErr_Format(PyExc_RuntimeError, "outRawSpectra has an unexpected number of FFT windows");
+			goto fail;
+		}
+	} else {
+		dataF = (PyArrayObject*) PyArray_ZEROS(3, dims, NPY_COMPLEX64, 0);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output data array");
+			goto fail;
+		}
 	}
-	PyArray_FILLWBYTE(timeF, 0);
 	
-	npy_intp dimsD[3];
-	dimsD[0] = (npy_intp) nStand;
-	dimsD[1] = (npy_intp) nChan;
-	dimsD[2] = (npy_intp) nFFT;
-	dataF = (PyArrayObject*) PyArray_SimpleNew(3, dimsD, NPY_COMPLEX64);
-	if(dataF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output data array");
-		Py_XDECREF(time);
-		Py_XDECREF(data);
-		Py_XDECREF(freq1);
-		Py_XDECREF(freq2);
-		Py_XDECREF(pTime);
-		Py_XDECREF(pData);
-		Py_XDECREF(nTime);
-		Py_XDECREF(nData);
-		Py_XDECREF(timeF);
-		return NULL;
-	}
-	PyArray_FILLWBYTE(dataF, 0);
+	Py_BEGIN_ALLOW_THREADS
 	
 	// Get access to the frequency information
 	double *cf1, *cf2;
-	cf1 = (double *) freq1->data;
-	cf2 = (double *) freq2->data;
+	cf1 = (double *) PyArray_DATA(freq1);
+	cf2 = (double *) PyArray_DATA(freq2);
 	
 	// Create the FFTW plans
 	long N;
-	fftwf_complex *inP;
+	float complex *inP;
 	fftwf_plan *plansF, *plansB;
-	plansF = (fftwf_plan *) malloc(nStand*nChan*sizeof(fftwf_plan));
-	plansB = (fftwf_plan *) malloc(nStand*nChan*sizeof(fftwf_plan));
+	plansF = (fftwf_plan *) malloc(nStand/2*nChan*sizeof(fftwf_plan));
+	plansB = (fftwf_plan *) malloc(nStand/2*nChan*sizeof(fftwf_plan));
 	for(j=0; j<nChan; j++) {
-		for(i=0; i<nStand; i++) {
+		for(i=0; i<nStand; i+=2) {
 			//Compute the number of FFT channels to use
 			if( i/2 == 0 ) {
 				N = getCoherentSampleSize(*(cf1 + j), sRate, DM);
@@ -921,44 +1138,39 @@ static PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) 
 				N = getCoherentSampleSize(*(cf2 + j), sRate, DM);
 			}
 			
-			inP = (fftwf_complex *) fftwf_malloc(N*sizeof(fftwf_complex));
-			*(plansF + nChan*i + j) = fftwf_plan_dft_1d(N, inP, inP, FFTW_FORWARD, FFTW_ESTIMATE);
-			*(plansB + nChan*i + j) = fftwf_plan_dft_1d(N, inP, inP, FFTW_BACKWARD, FFTW_ESTIMATE);
+			inP = (float complex *) fftwf_malloc(N*sizeof(float complex));
+			*(plansF + nChan*i/2 + j) = fftwf_plan_dft_1d(N, inP, inP, FFTW_FORWARD, FFTW_ESTIMATE);
+			*(plansB + nChan*i/2 + j) = fftwf_plan_dft_1d(N, inP, inP, FFTW_BACKWARD, FFTW_ESTIMATE);
 			fftwf_free(inP);
 		}
 	}
 	
 	// Go!
-	long nSets, start, stop, secStart;
-	double cFreq, *rf, *inT;
-	float complex tempF;
+	long nSets, start, stop, secStartX, secStartY;
+	double cFreq;
 	float complex *chirp;
-	double *t0, *t1, *t2, *tF;
 	float complex *d0, *d1, *d2, *dF;
 	
-	fftwf_complex *in;
+	float complex *inX, *inY;
 	
-	t0 = (double *) pTime->data;
-	d0 = (float complex *) pData->data;
-	t1 = (double *) time->data;
-	d1 = (float complex *) data->data;
-	t2 = (double *) nTime->data;
-	d2 = (float complex *) nData->data;
-	tF = (double *) timeF->data;
-	dF = (float complex *) dataF->data;
-	
+	d0 = (float complex *) PyArray_DATA(pData);
+	d1 = (float complex *) PyArray_DATA(data);
+	d2 = (float complex *) PyArray_DATA(nData);
+	dF = (float complex *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
-		#pragma omp parallel default(shared) private(secStart, i, j, k, l, N, nSets, start, stop, cFreq, rf, chirp, in, inT, tempF)
+		omp_set_dynamic(0);
+		#pragma omp parallel default(shared) private(secStartX, secStartY, i, j, k, l, N, nSets, start, stop, cFreq, chirp, inX, inY)
 	#endif
 	{
 		#ifdef _OPENMP
-			#pragma omp for schedule(dynamic)
+			#pragma omp for schedule(OMP_SCHEDULER)
 		#endif
 		for(j=0; j<nChan; j++) {
-			for(i=0; i<nStand; i++) {
+			for(i=0; i<nStand; i+=2) {
 				// Section start offset
-				secStart = nFFT*nChan*i + nFFT*j;
+				secStartX = nFFT*nChan*i     + nFFT*j;
+				secStartY = nFFT*nChan*(i+1) + nFFT*j;
 				
 				// Get the correct center frequency to use
 				if( i/2 == 0 ) {
@@ -973,19 +1185,13 @@ static PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) 
 				// Compute the number of windows we need to use for CD
 				nSets = nFFT / N;
 				
-				// Compute the relative frequencies for this channel
-				rf = (double *) malloc(N*sizeof(double));
-				getFFTFreqs(N, cFreq, sRate, rf);
-				
 				// Compute the chirp function
 				chirp = (float complex *) malloc(N*sizeof(float complex));
-				chirpFunction(N, rf, DM, chirp);
-				
-				// Create the time array
-				inT = (double *) malloc(N*sizeof(double));
+				chirpFunction(N, cFreq, sRate, DM, chirp);
 				
 				// Create the FFTW array
-				in = (fftwf_complex *) fftwf_malloc(N*sizeof(fftwf_complex));
+				inX = (float complex *) fftwf_malloc(N*sizeof(float complex));
+				inY = (float complex *) fftwf_malloc(N*sizeof(float complex));
 				
 				// Loop over the sets
 				for(l=0; l<2*nSets+1; l++) {
@@ -996,59 +1202,53 @@ static PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) 
 					if( start < 0 ) {
 						// "Previous" buffering
 						for(k=0; k<-start; k++) {
-							*(inT + k) = *(t0 + nFFT*i + k + nFFT + start);
-							in[k][0] = creal(*(d0 + secStart + k + nFFT + start));
-							in[k][1] = cimag(*(d0 + secStart + k + nFFT + start));
+							inX[k] = *(d0 + secStartX + k + nFFT + start);
+							inY[k] = *(d0 + secStartY + k + nFFT + start);
 						}
 						
 						// Current data
 						for(k=-start; k<N; k++) {
-							*(inT + k) = *(t1 + nFFT*i + k + start);
-							in[k][0] = creal(*(d1 + secStart + k + start));
-							in[k][1] = cimag(*(d1 + secStart + k + start));
+							inX[k] = *(d1 + secStartX + k + start);
+							inY[k] = *(d1 + secStartY + k + start);
 						}
 						
 					} else if( stop > nFFT ) {
 						// Current data
 						if( start < nFFT ) {
 							for(k=0; k<nFFT-start; k++) {
-								*(inT + k) = *(t1 + nFFT*i + k + start);
-								in[k][0] = creal(*(d1 + secStart + k + start));
-								in[k][1] = cimag(*(d1 + secStart + k + start));
+								inX[k] = *(d1 + secStartX + k + start);
+								inY[k] = *(d1 + secStartY + k + start);
 							}
 						}
 						
 						// "Next" buffering
 						for(k=nFFT-start; k<N; k++) {
-							*(inT + k) = *(t2 + nFFT*i + k - nFFT + start);
-							in[k][0] = creal(*(d2 + secStart + k - nFFT + start));
-							in[k][1] = cimag(*(d2 + secStart + k - nFFT + start));
+							inX[k] = *(d2 + secStartX + k - nFFT + start);
+							inY[k] = *(d2 + secStartY + k - nFFT + start);
 						}
 						
 					} else {
 						// Current data
 						for(k=0; k<N; k++) {
-							*(inT + k) = *(t1 + nFFT*i + k + start);
-							in[k][0] = creal(*(d1 + secStart + k + start));
-							in[k][1] = cimag(*(d1 + secStart + k + start));
+							inX[k] = *(d1 + secStartX + k + start);
+							inY[k] = *(d1 + secStartY + k + start);
 						}
 						
 					}
 					
 					// Forward FFT
-					fftwf_execute_dft(*(plansF + nChan*i + j), in, in);
+					fftwf_execute_dft(*(plansF + nChan*i/2 + j), inX, inX);
+					fftwf_execute_dft(*(plansF + nChan*i/2 + j), inY, inY);
 					
 					// Chirp
 					for(k=0; k<N; k++) {
-						tempF = in[k][0] + imaginary*in[k][1];
-						tempF /= N;
-						tempF *= *(chirp + k);
-						in[k][0] = creal(tempF);
-						in[k][1] = cimag(tempF);
+						inX[k] *= *(chirp + k) / N;
+						inY[k] *= *(chirp + k) / N;
 					}
 					
 					// Backward FFT
-					fftwf_execute_dft(*(plansB + nChan*i + j), in, in);
+					fftwf_execute_dft(*(plansB + nChan*i/2 + j), inX, inX);
+					fftwf_execute_dft(*(plansB + nChan*i/2 + j), inY, inY);
 					
 					// Save
 					start = l*N/2;
@@ -1058,13 +1258,8 @@ static PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) 
 					}
 					
 					for(k=start; k<stop; k++) {
-						dimsT[1] = (npy_intp) k;
-						dimsD[2] = (npy_intp) k;
-						if( j == 0 ) {
-							// We only need to do this once for each stand since timeF is 2-D (stands by FFT windows)
-							*(tF + nFFT*i + k) =  *(inT + k - start + N/4);
-						}
-						*(dF + secStart + k) = in[k - start + N/4][0] + imaginary*in[k - start + N/4][1];
+						*(dF + secStartX + k) = inX[k - start + N/4];
+						*(dF + secStartY + k) = inY[k - start + N/4];
 					}
 					
 					if( stop == nFFT ) {
@@ -1074,38 +1269,45 @@ static PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) 
 				}
 				
 				// Cleanup
-				fftwf_free(in);
-				free(inT);
 				free(chirp);
-				free(rf);
+				fftwf_free(inX);
+				fftwf_free(inY);
 			}
 		}
 	}
 	
 	// Cleanup
 	for(j=0; j<nChan; j++) {
-		for(i=0; i<nStand; i++) {
-			fftwf_destroy_plan(*(plansF + nChan*i + j));
-			fftwf_destroy_plan(*(plansB + nChan*i + j));
+		for(i=0; i<nStand; i+=2) {
+			fftwf_destroy_plan(*(plansF + nChan*i/2 + j));
+			fftwf_destroy_plan(*(plansB + nChan*i/2 + j));
 		}
 	}
 	free(plansF);
 	free(plansB);
 	
-	Py_XDECREF(time);
+	Py_END_ALLOW_THREADS
+	
+	drxDataF = Py_BuildValue("O", PyArray_Return(dataF));
+	
 	Py_XDECREF(data);
 	Py_XDECREF(freq1);
 	Py_XDECREF(freq2);
-	Py_XDECREF(pTime);
 	Py_XDECREF(pData);
-	Py_XDECREF(nTime);
 	Py_XDECREF(nData);
-	
-	drxDataF = Py_BuildValue("(OO)", PyArray_Return(timeF), PyArray_Return(dataF));
-	Py_XDECREF(timeF);
 	Py_XDECREF(dataF);
-
+	
 	return drxDataF;
+	
+fail:
+	Py_XDECREF(data);
+	Py_XDECREF(freq1);
+	Py_XDECREF(freq2);
+	Py_XDECREF(pData);
+	Py_XDECREF(nData);
+	Py_XDECREF(dataF);
+	
+	return NULL;
 }
 
 PyDoc_STRVAR(MultiChannelCD_doc, \
@@ -1114,8 +1316,6 @@ the time and frequencies, apply coherent dedispersion to the data and return a\n
 two-element tuple giving the time and dedispersed data.\n\
 \n\
 Input arguments are:\n\
-  * time - 2-D numpy.float64 (stands by samples) array of times for the input\n\
-    data\n\
   * rawSpectra - 3-D numpy.complex64 (stands by channels by samples) of raw\n\
     spectra data generated by 'PulsarEngineRaw' or 'PulsarEngineWindow'\n\
   * freq1 - 1-D numpy.float64 (channels) array of frequencies for the first\n\
@@ -1124,18 +1324,12 @@ Input arguments are:\n\
     set of two stands in Hz\n\
   * sampleRate - Channelized data sample rate in Hz\n\
   * DM - dispersion measure in pc cm^-3 to dedisperse at\n\
-  * prevTime - 2-D numpy.float64 (stands by samples) array of times for the\n\
-    previously input data\n\
   * prevRawSpectra - 3-D numpy.complex64 (stands by channels by samples) of\n\
     the previously input data\n\
-  * nextTime - 2-D numpy.float64 (stands by samples) array of times for the\n\
-    following input data\n\
   * prevRawSpectra - 3-D numpy.complex64 (stands by channels by samples) of\n\
     the following input data\n\
 \n\
 Outputs:\n\
-  * dedispTime - 2-D numpy.float64 (stands by samples) array of times for\n\
-    the coherently dedispersed data\n\
   * dedispRawSpectra - 3-D numpy.complex64 (stands by channels by samples) of\n\
     the coherently dedispersed spectra\n\
 \n\
@@ -1158,74 +1352,101 @@ Outputs:\n\
 
 
 static PyObject *CombineToIntensity(PyObject *self, PyObject *args, PyObject *kwds) {
-	PyObject *signals, *signalsF;
+	PyObject *signals, *signalsF=NULL;
 	PyArrayObject *data, *dataF;
 	
-	long i, j, k, nStand, nSamps, nChan, nFFT;
+	long ij, i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	if(!PyArg_ParseTuple(args, "O", &signals)) {
+	static char *kwlist[] = {"signals", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|O", kwlist, &signals, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
 	
 	// Bring the data into C and make it usable
 	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_COMPLEX64, 3, 3);
+	if( data == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input signals array to 3-D complex64");
+		return NULL;
+	}
 	
 	// Get the properties of the data
-	nStand = (long) data->dimensions[0];
-	nChan  = (long) data->dimensions[1];
-	nFFT   = (long) data->dimensions[2];
+	nStand = (long) PyArray_DIM(data, 0);
+	nChan  = (long) PyArray_DIM(data, 1);
+	nFFT   = (long) PyArray_DIM(data, 2);
 	
 	// Find out how large the output array needs to be and initialize it
 	nSamps = nChan*nFFT;
 	npy_intp dims[2];
 	dims[0] = (npy_intp) (nStand/2);
 	dims[1] = (npy_intp) nSamps;
-	dataF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_FLOAT64);
-	if(dataF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-		Py_XDECREF(data);
-		return NULL;
+	if( signalsF != NULL ) {
+		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_FLOAT32, 2, 2);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 2-D float32");
+			Py_XDECREF(data);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of stands");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of samples");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+	} else {
+		dataF = (PyArrayObject*) PyArray_ZEROS(2, dims, NPY_FLOAT32, 0);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			Py_XDECREF(data);
+			return NULL;
+		}
 	}
-	PyArray_FILLWBYTE(dataF, 0);
+	
+	Py_BEGIN_ALLOW_THREADS
 	
 	// Go!
 	long secStartX, secStartY;
-	double tempV;
 	float complex *a;
-	double *b;
-	a = (float complex *) data->data;
-	b = (double *) dataF->data;
+	float *b;
+	a = (float complex *) PyArray_DATA(data);
+	b = (float *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
-		#pragma omp parallel default(shared) private(secStartX, secStartY, i, j, k, tempV)
+		omp_set_dynamic(0);
+		#pragma omp parallel default(shared) private(secStartX, secStartY, i, j, k)
 	#endif
 	{
 		#ifdef _OPENMP
-			#pragma omp for schedule(dynamic)
+			#pragma omp for schedule(OMP_SCHEDULER)
 		#endif
-		for(j=0; j<nChan; j++) {
-			for(i=0; i<nStand; i+=2) {
-				secStartX = nSamps*i + nFFT*j;
-				secStartY = nSamps*(i+1) + nFFT*j;
-				
-				for(k=0; k<nFFT; k++) {
-					// I
-					tempV  = creal(*(a + secStartX + k))*creal(*(a + secStartX + k));
-					tempV += cimag(*(a + secStartX + k))*cimag(*(a + secStartX + k));
-					tempV += creal(*(a + secStartY + k))*creal(*(a + secStartY + k));
-					tempV += cimag(*(a + secStartY + k))*cimag(*(a + secStartY + k));
-					*(b + nSamps*(i/2) + nChan*k + j) = tempV;
-				}
+		for(ij=0; ij<nStand/2*nChan; ij++) {
+			i = ij / nChan * 2;
+			j = ij % nChan;
+			
+			secStartX = nSamps*i + nFFT*j;
+			secStartY = nSamps*(i+1) + nFFT*j;
+			
+			for(k=0; k<nFFT; k++) {
+				// I
+				*(b + nSamps*(i/2) + nChan*k + j) = cabs2f(*(a + secStartX + k)) + \
+				                                    cabs2f(*(a + secStartY + k));
 			}
 		}
 	}
 	
-	Py_XDECREF(data);
+	Py_END_ALLOW_THREADS
 	
 	signalsF = Py_BuildValue("O", PyArray_Return(dataF));
+	
+	Py_XDECREF(data);
 	Py_XDECREF(dataF);
-
+	
 	return signalsF;
 }
 
@@ -1242,70 +1463,98 @@ Outputs:\n\
 
 
 static PyObject *CombineToLinear(PyObject *self, PyObject *args, PyObject *kwds) {
-	PyObject *signals, *signalsF;
+	PyObject *signals, *signalsF=NULL;
 	PyArrayObject *data, *dataF;
 	
-	long i, j, k, nStand, nSamps, nChan, nFFT;
+	long ij, i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	if(!PyArg_ParseTuple(args, "O", &signals)) {
+	static char *kwlist[] = {"signals", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|O", kwlist, &signals, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
 	
 	// Bring the data into C and make it usable
 	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_COMPLEX64, 3, 3);
+	if( data == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input signals array to 3-D complex64");
+		return NULL;
+	}
 	
 	// Get the properties of the data
-	nStand = (long) data->dimensions[0];
-	nChan  = (long) data->dimensions[1];
-	nFFT   = (long) data->dimensions[2];
+	nStand = (long) PyArray_DIM(data, 0);
+	nChan  = (long) PyArray_DIM(data, 1);
+	nFFT   = (long) PyArray_DIM(data, 2);
 	
 	// Find out how large the output array needs to be and initialize it
 	nSamps = nChan*nFFT;
 	npy_intp dims[2];
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nSamps;
-	dataF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_FLOAT64);
-	if(dataF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-		Py_XDECREF(data);
-		return NULL;
+	if( signalsF != NULL ) {
+		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_FLOAT32, 2, 2);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 2-D float32");
+			Py_XDECREF(data);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of stands");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of samples");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+	} else {
+		dataF = (PyArrayObject*) PyArray_ZEROS(2, dims, NPY_FLOAT32, 0);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			Py_XDECREF(data);
+			return NULL;
+		}
 	}
-	PyArray_FILLWBYTE(dataF, 0);
+	
+	Py_BEGIN_ALLOW_THREADS
 	
 	// Go!
 	long secStart;
-	double tempV;
 	float complex *a;
-	double *b;
-	a = (float complex *) data->data;
-	b = (double *) dataF->data;
+	float *b;
+	a = (float complex *) PyArray_DATA(data);
+	b = (float *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
-		#pragma omp parallel default(shared) private(secStart, i, j, k, tempV)
+		omp_set_dynamic(0);
+		#pragma omp parallel default(shared) private(secStart, i, j, k)
 	#endif
 	{
 		#ifdef _OPENMP
-			#pragma omp for schedule(dynamic)
+			#pragma omp for schedule(OMP_SCHEDULER)
 		#endif
-		for(j=0; j<nChan; j++) {
-			for(i=0; i<nStand; i++) {
-				secStart = nSamps*i + nFFT*j;
-				
-				for(k=0; k<nFFT; k++) {
-					tempV = cabs(*(a + secStart + k));
-					tempV *= tempV;
-					*(b + nSamps*i + nChan*k + j) = tempV;
-				}
+		for(ij=0; ij<nStand*nChan; ij++) {
+			i = ij / nChan;
+			j = ij % nChan;
+			
+			secStart = nSamps*i + nFFT*j;
+			
+			for(k=0; k<nFFT; k++) {
+				*(b + nSamps*i + nChan*k + j) = cabs2f(*(a + secStart + k));
 			}
 		}
 	}
 	
-	Py_XDECREF(data);
+	Py_END_ALLOW_THREADS
 	
 	signalsF = Py_BuildValue("O", PyArray_Return(dataF));
+	
+	Py_XDECREF(data);
 	Py_XDECREF(dataF);
-
+	
 	return signalsF;
 }
 
@@ -1322,84 +1571,107 @@ Outputs:\n\
 
 
 static PyObject *CombineToCircular(PyObject *self, PyObject *args, PyObject *kwds) {
-	PyObject *signals, *signalsF;
+	PyObject *signals, *signalsF=NULL;
 	PyArrayObject *data, *dataF;
 	
-	long i, j, k, nStand, nSamps, nChan, nFFT;
+	long ij, i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	if(!PyArg_ParseTuple(args, "O", &signals)) {
+	static char *kwlist[] = {"signals", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|O", kwlist, &signals, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
 	
 	// Bring the data into C and make it usable
 	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_COMPLEX64, 3, 3);
+	if( data == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input signals array to 3-D complex64");
+		return NULL;
+	}
 	
 	// Get the properties of the data
-	nStand = (long) data->dimensions[0];
-	nChan  = (long) data->dimensions[1];
-	nFFT   = (long) data->dimensions[2];
+	nStand = (long) PyArray_DIM(data, 0);
+	nChan  = (long) PyArray_DIM(data, 1);
+	nFFT   = (long) PyArray_DIM(data, 2);
 	
 	// Find out how large the output array needs to be and initialize it
 	nSamps = nChan*nFFT;
 	npy_intp dims[2];
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nSamps;
-	dataF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_FLOAT64);
-	if(dataF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-		Py_XDECREF(data);
-		return NULL;
+	if( signalsF != NULL ) {
+		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_FLOAT32, 2, 2);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 2-D float32");
+			Py_XDECREF(data);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of stands");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of samples");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+	} else {
+		dataF = (PyArrayObject*) PyArray_ZEROS(2, dims, NPY_FLOAT32, 0);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			Py_XDECREF(data);
+			return NULL;
+		}
 	}
-	PyArray_FILLWBYTE(dataF, 0);
+	
+	Py_BEGIN_ALLOW_THREADS
 	
 	// Go!
 	long secStartX, secStartY;
-	double tempV;
-	double complex tempC;
 	float complex *a;
-	double *b;
-	a = (float complex *) data->data;
-	b = (double *) dataF->data;
+	float *b;
+	a = (float complex *) PyArray_DATA(data);
+	b = (float *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
-		#pragma omp parallel default(shared) private(secStartX, secStartY, i, j, k, tempC, tempV)
+		omp_set_dynamic(0);
+		#pragma omp parallel default(shared) private(secStartX, secStartY, i, j, k)
 	#endif
 	{
 		#ifdef _OPENMP
-			#pragma omp for schedule(dynamic)
+			#pragma omp for schedule(OMP_SCHEDULER)
 		#endif
-		for(j=0; j<nChan; j++) {
-			for(i=0; i<nStand; i+=2) {
-				secStartX = nSamps*i + nFFT*j;
-				secStartY = nSamps*(i+1) + nFFT*j;
+		for(ij=0; ij<nStand/2*nChan; ij++) {
+			i = ij / nChan * 2;
+			j = ij % nChan;
+			
+			secStartX = nSamps*i + nFFT*j;
+			secStartY = nSamps*(i+1) + nFFT*j;
+			
+			for(k=0; k<nFFT; k++) {
+				// LL
+				*(b + nSamps*(i+0) + nChan*k + j) = cabs2f( \
+				                                           *(a + secStartX + k) + *(a + secStartY + k)*_Complex_I \
+				                                         ) / 2.0;
 				
-				for(k=0; k<nFFT; k++) {
-					// LL
-					tempC = *(a + secStartX + k) + *(a + secStartY + k)*imaginary;
-					tempC /= sqrt(2.0);
-					
-					tempV  = creal(tempC)*creal(tempC);
-					tempV += cimag(tempC)*cimag(tempC);
-					*(b + nSamps*(i+0) + nChan*k + j) = tempV;
-					
-					// RR
-					tempC = *(a + secStartX + k) - *(a + secStartY + k)*imaginary;
-					tempC /= sqrt(2.0);
-					
-					tempV  = creal(tempC)*creal(tempC);
-					tempV += cimag(tempC)*cimag(tempC);
-					*(b + nSamps*(i+1) + nChan*k + j) = tempV;
-				}
+				// RR
+				*(b + nSamps*(i+1) + nChan*k + j) =  cabs2f( \
+				                                            *(a + secStartX + k) - *(a + secStartY + k)*_Complex_I \
+				                                          ) / 2.0;
 			}
 		}
 	}
 	
-	Py_XDECREF(data);
+	Py_END_ALLOW_THREADS
 	
 	signalsF = Py_BuildValue("O", PyArray_Return(dataF));
+	
+	Py_XDECREF(data);
 	Py_XDECREF(dataF);
-
+	
 	return signalsF;
 }
 
@@ -1416,87 +1688,113 @@ Outputs:\n\
 
 
 static PyObject *CombineToStokes(PyObject *self, PyObject *args, PyObject *kwds) {
-	PyObject *signals, *signalsF;
+	PyObject *signals, *signalsF=NULL;
 	PyArrayObject *data, *dataF;
 	
-	long i, j, k, nStand, nSamps, nChan, nFFT;
+	long ij, i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	if(!PyArg_ParseTuple(args, "O", &signals)) {
+	static char *kwlist[] = {"signals", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|O", kwlist, &signals, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
 	
 	// Bring the data into C and make it usable
 	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_COMPLEX64, 3, 3);
+	if( data == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input signals array to 3-D complex64");
+		return NULL;
+	}
 	
 	// Get the properties of the data
-	nStand = (long) data->dimensions[0];
-	nChan  = (long) data->dimensions[1];
-	nFFT   = (long) data->dimensions[2];
+	nStand = (long) PyArray_DIM(data, 0);
+	nChan  = (long) PyArray_DIM(data, 1);
+	nFFT   = (long) PyArray_DIM(data, 2);
 	
 	// Find out how large the output array needs to be and initialize it
 	nSamps = nChan*nFFT;
 	npy_intp dims[2];
 	dims[0] = (npy_intp) (4*(nStand/2));
 	dims[1] = (npy_intp) nSamps;
-	dataF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_FLOAT64);
-	if(dataF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-		Py_XDECREF(data);
-		return NULL;
+	if( signalsF != NULL ) {
+		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_FLOAT32, 2, 2);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 2-D float32");
+			Py_XDECREF(data);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of stands");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+		if(PyArray_DIM(dataF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of samples");
+			Py_XDECREF(data);
+			Py_XDECREF(dataF);
+			return NULL;
+		}
+	} else {
+		dataF = (PyArrayObject*) PyArray_ZEROS(2, dims, NPY_FLOAT32, 0);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			Py_XDECREF(data);
+			return NULL;
+		}
 	}
-	PyArray_FILLWBYTE(dataF, 0);
+	
+	Py_BEGIN_ALLOW_THREADS
 	
 	// Go!
 	long secStartX, secStartY;
-	double tempV;
 	float complex *a;
-	double *b;
-	a = (float complex *) data->data;
-	b = (double *) dataF->data;
+	float *b;
+	a = (float complex *) PyArray_DATA(data);
+	b = (float *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
-		#pragma omp parallel default(shared) private(secStartX, secStartY, i, j, k, tempV)
+		omp_set_dynamic(0);
+		#pragma omp parallel default(shared) private(secStartX, secStartY, i, j, k)
 	#endif
 	{
 		#ifdef _OPENMP
-			#pragma omp for schedule(dynamic)
+			#pragma omp for schedule(OMP_SCHEDULER)
 		#endif
-		for(j=0; j<nChan; j++) {
-			for(i=0; i<nStand; i+=2) {
-				secStartX = nSamps*i + nFFT*j;
-				secStartY = nSamps*(i+1) + nFFT*j;
+		for(ij=0; ij<nStand/2*nChan; ij++) {
+			i = ij / nChan * 2;
+			j = ij % nChan;
+			
+			secStartX = nSamps*i + nFFT*j;
+			secStartY = nSamps*(i+1) + nFFT*j;
+			
+			for(k=0; k<nFFT; k++) {
+				// I
+				*(b + nSamps*(4*(i/2)+0) + nChan*k + j) = cabs2(*(a + secStartX + k)) + \
+				                                          cabs2(*(a + secStartY + k));
 				
-				for(k=0; k<nFFT; k++) {
-					// I
-					tempV  = creal(*(a + secStartX + k))*creal(*(a + secStartX + k));
-					tempV += cimag(*(a + secStartX + k))*cimag(*(a + secStartX + k));
-					tempV += creal(*(a + secStartY + k))*creal(*(a + secStartY + k));
-					tempV += cimag(*(a + secStartY + k))*cimag(*(a + secStartY + k));
-					*(b + nSamps*(4*(i/2)+0) + nChan*k + j) = tempV;
-					
-					// Q
-					tempV  = creal(*(a + secStartX + k))*creal(*(a + secStartX + k));
-					tempV += cimag(*(a + secStartX + k))*cimag(*(a + secStartX + k));
-					tempV -= creal(*(a + secStartY + k))*creal(*(a + secStartY + k));
-					tempV -= cimag(*(a + secStartY + k))*cimag(*(a + secStartY + k));
-					*(b + nSamps*(4*(i/2)+1) + nChan*k + j) = tempV;
-					
-					// U
-					tempV = 2.0*creal(*(a + secStartX + k) * conj(*(a + secStartY + k)));
-					*(b + nSamps*(4*(i/2)+2) + nChan*k + j) = tempV;
-					
-					// V
-					tempV = -2.0*cimag(*(a + secStartX + k) * conj(*(a + secStartY + k)));
-					*(b + nSamps*(4*(i/2)+3) + nChan*k + j) = tempV;
-				}
+				// Q
+				*(b + nSamps*(4*(i/2)+1) + nChan*k + j)  = cabs2(*(a + secStartX + k)) - \
+				                                           cabs2(*(a + secStartY + k));
+				
+				// U
+				*(b + nSamps*(4*(i/2)+2) + nChan*k + j) = 2.0 * \
+				                                          creal(*(a + secStartX + k) * \
+				                                          conj(*(a + secStartY + k)));
+				
+				// V
+				*(b + nSamps*(4*(i/2)+3) + nChan*k + j) = -2.0 * \
+				                                          cimag(*(a + secStartX + k) * \
+				                                          conj(*(a + secStartY + k)));
 			}
 		}
 	}
 	
-	Py_XDECREF(data);
+	Py_END_ALLOW_THREADS
 	
 	signalsF = Py_BuildValue("O", PyArray_Return(dataF));
+	
+	Py_XDECREF(data);
 	Py_XDECREF(dataF);
 
 	return signalsF;
@@ -1515,120 +1813,172 @@ Outputs:\n\
 
 
 static PyObject *OptimizeDataLevels8Bit(PyObject *self, PyObject *args, PyObject *kwds) {
-	PyObject *spectra, *output;
-	PyArrayObject *data, *zeroF, *scaleF, *dataF;
-	long i, j, k, nStand, nSamps, nFFT;
+	PyObject *spectra, *bzero=NULL, *bscale=NULL, *bdata=NULL, *output;
+	PyArrayObject *data=NULL, *zeroF=NULL, *scaleF=NULL, *dataF=NULL;
+	long ij, i, j, k, nStand, nSamps, nFFT;
 	int nChan = 64;
 	
-	if(!PyArg_ParseTuple(args, "Oi", &spectra, &nChan)) {
+	static char *kwlist[] = {"spectra", "nChan", "bzero", "bscale", "bdata", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "Oi|OOO", kwlist, &spectra, &nChan, &bzero, &bscale, &bdata)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
-		return NULL;
+		goto fail;
 	}
 	
 	// Bring the data into C and make it usable
-	data = (PyArrayObject *) PyArray_ContiguousFromObject(spectra, NPY_FLOAT64, 2, 2);
+	data = (PyArrayObject *) PyArray_ContiguousFromObject(spectra, NPY_FLOAT32, 2, 2);
+	if( data == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input spectra array to 2-D float32");
+		goto fail;
+	}
 	
 	// Get the properties of the data
-	nStand = (long) data->dimensions[0];
-	nSamps = (long) data->dimensions[1];
+	nStand = (long) PyArray_DIM(data, 0);
+	nSamps = (long) PyArray_DIM(data, 1);
 	
 	// Find out how large the output array needs to be and initialize it
 	nFFT = nSamps / nChan;
 	npy_intp dims[2];
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
-	zeroF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_FLOAT32);
-	if(zeroF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-		Py_XDECREF(data);
-		return NULL;
+	if( bzero != NULL ) {
+		zeroF = (PyArrayObject*) PyArray_ContiguousFromObject(bzero, NPY_FLOAT32, 2, 2);
+		if(zeroF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output bzero array to 2-D float32");
+			goto fail;
+		}
+		if(PyArray_DIM(zeroF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "bzero has an unexpected number of stands");
+			goto fail;
+		}
+		if(PyArray_DIM(zeroF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "bzero has an unexpected number of channels");
+			goto fail;
+		}
+	} else {
+		zeroF = (PyArrayObject*) PyArray_ZEROS(2, dims, NPY_FLOAT32, 0);
+		if(zeroF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			goto fail;
+		}
 	}
-	PyArray_FILLWBYTE(zeroF, 0);
 	
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
-	scaleF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_FLOAT32);
-	if(scaleF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-		Py_XDECREF(data);
-		return NULL;
+	if( bscale != NULL ) {
+		scaleF = (PyArrayObject*) PyArray_ContiguousFromObject(bzero, NPY_FLOAT32, 2, 2);
+		if(scaleF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output bscale array to 2-D float32");
+			goto fail;
+		}
+		if(PyArray_DIM(scaleF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "bscale has an unexpected number of stands");
+			goto fail;
+		}
+		if(PyArray_DIM(scaleF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "bscale has an unexpected number of channels");
+			goto fail;
+		}
+	} else {
+		scaleF = (PyArrayObject*) PyArray_ZEROS(2, dims, NPY_FLOAT32, 0);
+		if(scaleF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			goto fail;
+		}
 	}
-	PyArray_FILLWBYTE(scaleF, 0);
 	
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nSamps;
-	dataF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_UINT8);
-	if(dataF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-		Py_XDECREF(data);
-		return NULL;
+	if( bdata != NULL ) {
+		dataF = (PyArrayObject*) PyArray_ContiguousFromObject(bdata, NPY_UINT8, 2, 2);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output bdata array to 2-D uint8");
+			goto fail;
+		}
+		if(PyArray_DIM(dataF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "bdata has an unexpected number of stands");
+			goto fail;
+		}
+		if(PyArray_DIM(dataF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "bdata has an unexpected number of channels");
+			goto fail;
+		}
+	} else {
+		dataF = (PyArrayObject*) PyArray_ZEROS(2, dims, NPY_UINT8, 0);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			goto fail;
+		}
 	}
-	PyArray_FILLWBYTE(dataF, 0);
+	
+	Py_BEGIN_ALLOW_THREADS
 	
 	// Go!
 	long secStart;
-	double *tempMin, *tempMax, tempV;
-	double *a;
-	float *b, *c;
+	float tempMin, tempMax, tempV;
+	float *a, *b, *c;
 	unsigned char *d;
-	a = (double *) data->data;
-	b = (float *) zeroF->data;
-	c = (float *) scaleF->data;
-	d = (unsigned char *) dataF->data;
-	
-	tempMin = (double *) malloc(nStand*nChan*sizeof(double));
-	tempMax = (double *) malloc(nStand*nChan*sizeof(double));
+	a = (float *) PyArray_DATA(data);
+	b = (float *) PyArray_DATA(zeroF);
+	c = (float *) PyArray_DATA(scaleF);
+	d = (unsigned char *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
-		#pragma omp parallel default(shared) private(secStart, i, j, k, tempV)
+		omp_set_dynamic(0);
+		#pragma omp parallel default(shared) private(secStart, i, j, k, tempV, tempMin, tempMax)
 	#endif
 	{
 		#ifdef _OPENMP
-			#pragma omp for schedule(dynamic)
+			#pragma omp for schedule(OMP_SCHEDULER)
 		#endif
-		for(j=0; j<nChan; j++) {
-			for(i=0; i<nStand; i++) {
-				secStart = nSamps*i + j;
-				
-				k = 0;
-				*(tempMin + i*nChan + j) = *(a + secStart + nChan*k);
-				*(tempMax + i*nChan + j) = *(a + secStart + nChan*k);
-				
-				for(k=1; k<nFFT; k++) {
-					if( *(a + secStart + nChan*k) < *(tempMin + i*nChan + j) ) {
-						*(tempMin + i*nChan + j) = *(a + secStart + nChan*k);
-					} else {
-						if( *(a + secStart + nChan*k) > *(tempMax + i*nChan + j) ) {
-							*(tempMax + i*nChan + j) = *(a + secStart + nChan*k);
-						}
-					}
+		for(ij=0; ij<nStand*nChan; ij++) {
+			i = ij / nChan;
+			j = ij % nChan;
+			
+			secStart = nSamps*i + j;
+			
+			k = 0;
+			tempMin = *(a + secStart + nChan*k);
+			tempMax = *(a + secStart + nChan*k);
+			
+			for(k=1; k<nFFT; k++) {
+				if( *(a + secStart + nChan*k) < tempMin ) {
+					tempMin = *(a + secStart + nChan*k);
+				} else if( *(a + secStart + nChan*k) > tempMax ) {
+					tempMax = *(a + secStart + nChan*k);
 				}
+			}
+			
+			*(b + i*nChan + j) = tempMin;
+			*(c + i*nChan + j) = (tempMax - tempMin) / 255.0;
+			
+			for(k=0; k<nFFT; k++) {
+				tempV  = *(a + secStart + nChan*k) - tempMin;
+				tempV /= *(c + i*nChan + j);
+				tempV  = round(tempV);
 				
-				*(b + i*nChan + j) = (float) *(tempMin + i*nChan + j);
-				*(c + i*nChan + j) = (float) ((*(tempMax + i*nChan + j) - *(tempMin + i*nChan + j)) / 255.0);
-				
-				for(k=0; k<nFFT; k++) {
-					tempV  = *(a + secStart + nChan*k) - *(b + i*nChan + j);
-					tempV /= *(c + i*nChan + j);
-					tempV  = round(tempV);
-					
-					*(d + secStart + nChan*k) = (unsigned char) tempV;
-				}
+				*(d + secStart + nChan*k) = (unsigned char) tempV;
 			}
 		}
 	}
 	
-	free(tempMin);
-	free(tempMax);
-	
-	Py_XDECREF(data);
+	Py_END_ALLOW_THREADS
 	
 	output = Py_BuildValue("(OOO)", PyArray_Return(zeroF), PyArray_Return(scaleF), PyArray_Return(dataF));
+	
+	Py_XDECREF(data);
 	Py_XDECREF(zeroF);
 	Py_XDECREF(scaleF);
 	Py_XDECREF(dataF);
 	
 	return output;
+	
+fail:
+	Py_XDECREF(data);
+	Py_XDECREF(zeroF);
+	Py_XDECREF(scaleF);
+	Py_XDECREF(dataF);
+	
+	return NULL;
 }
 
 PyDoc_STRVAR(OptimizeDataLevels8Bit_doc, \
@@ -1648,120 +1998,172 @@ Outputs:\n\
 
 
 static PyObject *OptimizeDataLevels4Bit(PyObject *self, PyObject *args, PyObject *kwds) {
-	PyObject *spectra, *output;
-	PyArrayObject *data, *zeroF, *scaleF, *dataF;
-	long i, j, k, nStand, nSamps, nFFT;
+	PyObject *spectra, *bzero=NULL, *bscale=NULL, *bdata=NULL, *output;
+	PyArrayObject *data=NULL, *zeroF=NULL, *scaleF=NULL, *dataF=NULL;
+	long ij, i, j, k, nStand, nSamps, nFFT;
 	int nChan = 64;
 	
-	if(!PyArg_ParseTuple(args, "Oi", &spectra, &nChan)) {
+	static char *kwlist[] = {"spectra", "nChan", "bzero", "bscale", "bdata", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "Oi|OOO", kwlist, &spectra, &nChan, &bzero, &bscale, &bdata)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
-		return NULL;
+		goto fail;
 	}
 	
 	// Bring the data into C and make it usable
-	data = (PyArrayObject *) PyArray_ContiguousFromObject(spectra, NPY_FLOAT64, 2, 2);
+	data = (PyArrayObject *) PyArray_ContiguousFromObject(spectra, NPY_FLOAT32, 2, 2);
+	if( data == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input spectra array to 2-D float32");
+		goto fail;
+	}
 	
 	// Get the properties of the data
-	nStand = (long) data->dimensions[0];
-	nSamps = (long) data->dimensions[1];
+	nStand = (long) PyArray_DIM(data, 0);
+	nSamps = (long) PyArray_DIM(data, 1);
 	
 	// Find out how large the output array needs to be and initialize it
 	nFFT = nSamps / nChan;
 	npy_intp dims[2];
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
-	zeroF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_FLOAT32);
-	if(zeroF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-		Py_XDECREF(data);
-		return NULL;
+	if( bzero != NULL ) {
+		zeroF = (PyArrayObject*) PyArray_ContiguousFromObject(bzero, NPY_FLOAT32, 2, 2);
+		if(zeroF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output bzero array to 2-D float32");
+			goto fail;
+		}
+		if(PyArray_DIM(zeroF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "bzero has an unexpected number of stands");
+			goto fail;
+		}
+		if(PyArray_DIM(zeroF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "bzero has an unexpected number of channels");
+			goto fail;
+		}
+	} else {
+		zeroF = (PyArrayObject*) PyArray_ZEROS(2, dims, NPY_FLOAT32, 0);
+		if(zeroF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			goto fail;
+		}
 	}
-	PyArray_FILLWBYTE(zeroF, 0);
 	
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
-	scaleF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_FLOAT32);
-	if(scaleF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-		Py_XDECREF(data);
-		return NULL;
+	if( bscale != NULL ) {
+		scaleF = (PyArrayObject*) PyArray_ContiguousFromObject(bzero, NPY_FLOAT32, 2, 2);
+		if(scaleF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output bscale array to 2-D float32");
+			goto fail;
+		}
+		if(PyArray_DIM(scaleF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "bscale has an unexpected number of stands");
+			goto fail;
+		}
+		if(PyArray_DIM(scaleF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "bscale has an unexpected number of channels");
+			goto fail;
+		}
+	} else {
+		scaleF = (PyArrayObject*) PyArray_ZEROS(2, dims, NPY_FLOAT32, 0);
+		if(scaleF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			goto fail;
+		}
 	}
-	PyArray_FILLWBYTE(scaleF, 0);
 	
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nSamps;
-	dataF = (PyArrayObject*) PyArray_SimpleNew(2, dims, NPY_UINT8);
-	if(dataF == NULL) {
-		PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-		Py_XDECREF(data);
-		return NULL;
+	if( bdata != NULL ) {
+		dataF = (PyArrayObject*) PyArray_ContiguousFromObject(bdata, NPY_UINT8, 2, 2);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output bdata array to 2-D uint8");
+			goto fail;
+		}
+		if(PyArray_DIM(dataF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "bdata has an unexpected number of stands");
+			goto fail;
+		}
+		if(PyArray_DIM(dataF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "bdata has an unexpected number of channels");
+			goto fail;
+		}
+	} else {
+		dataF = (PyArrayObject*) PyArray_ZEROS(2, dims, NPY_UINT8, 0);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			goto fail;
+		}
 	}
-	PyArray_FILLWBYTE(dataF, 0);
+	
+	Py_BEGIN_ALLOW_THREADS
 	
 	// Go!
 	long secStart;
-	double *tempMin, *tempMax, tempV;
-	double *a;
-	float *b, *c;
+	float tempMin, tempMax, tempV;
+	float *a, *b, *c;
 	unsigned char *d;
-	a = (double *) data->data;
-	b = (float *) zeroF->data;
-	c = (float *) scaleF->data;
-	d = (unsigned char *) dataF->data;
-	
-	tempMin = (double *) malloc(nStand*nChan*sizeof(double));
-	tempMax = (double *) malloc(nStand*nChan*sizeof(double));
+	a = (float *) PyArray_DATA(data);
+	b = (float *) PyArray_DATA(zeroF);
+	c = (float *) PyArray_DATA(scaleF);
+	d = (unsigned char *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
-		#pragma omp parallel default(shared) private(secStart, i, j, k, tempV)
+		omp_set_dynamic(0);
+		#pragma omp parallel default(shared) private(secStart, i, j, k, tempV, tempMin, tempMax)
 	#endif
 	{
 		#ifdef _OPENMP
-			#pragma omp for schedule(dynamic)
+			#pragma omp for schedule(OMP_SCHEDULER)
 		#endif
-		for(j=0; j<nChan; j++) {
-			for(i=0; i<nStand; i++) {
-				secStart = nSamps*i + j;
-				
-				k = 0;
-				*(tempMin + i*nChan + j) = *(a + secStart + nChan*k);
-				*(tempMax + i*nChan + j) = *(a + secStart + nChan*k);
-				
-				for(k=1; k<nFFT; k++) {
-					if( *(a + secStart + nChan*k) < *(tempMin + i*nChan + j) ) {
-						*(tempMin + i*nChan + j) = *(a + secStart + nChan*k);
-					} else {
-						if( *(a + secStart + nChan*k) > *(tempMax + i*nChan + j) ) {
-							*(tempMax + i*nChan + j) = *(a + secStart + nChan*k);
-						}
-					}
+		for(ij=0; ij<nStand*nChan; ij++) {
+			i = ij / nChan;
+			j = ij % nChan;
+			
+			secStart = nSamps*i + j;
+			
+			k = 0;
+			tempMin = *(a + secStart + nChan*k);
+			tempMax = *(a + secStart + nChan*k);
+			
+			for(k=1; k<nFFT; k++) {
+				if( *(a + secStart + nChan*k) < tempMin ) {
+					tempMin = *(a + secStart + nChan*k);
+				} else if( *(a + secStart + nChan*k) > tempMax ) {
+					tempMax = *(a + secStart + nChan*k);
 				}
+			}
+			
+			*(b + i*nChan + j) = tempMin;
+			*(c + i*nChan + j) = (tempMax - tempMin) / 15.0;
+			
+			for(k=0; k<nFFT; k++) {
+				tempV  = *(a + secStart + nChan*k) - tempMin;
+				tempV /= *(c + i*nChan + j);
+				tempV  = round(tempV);
 				
-				*(b + i*nChan + j) = (float) *(tempMin + i*nChan + j);
-				*(c + i*nChan + j) = (float) ((*(tempMax + i*nChan + j) - *(tempMin + i*nChan + j)) / 15.0);
-				
-				for(k=0; k<nFFT; k++) {
-					tempV  = *(a + secStart + nChan*k) - *(b + i*nChan + j);
-					tempV /= *(c + i*nChan + j);
-					tempV  = round(tempV);
-					
-					*(d + secStart + nChan*k) = ((unsigned char) tempV ) & 0xF;
-				}
+				*(d + secStart + nChan*k) = ((unsigned char) tempV ) & 0xF;
 			}
 		}
 	}
 	
-	free(tempMin);
-	free(tempMax);
-	
-	Py_XDECREF(data);
+	Py_END_ALLOW_THREADS
 	
 	output = Py_BuildValue("(OOO)", PyArray_Return(zeroF), PyArray_Return(scaleF), PyArray_Return(dataF));
+	
+	Py_XDECREF(data);
 	Py_XDECREF(zeroF);
 	Py_XDECREF(scaleF);
 	Py_XDECREF(dataF);
 	
 	return output;
+	
+fail:
+	Py_XDECREF(data);
+	Py_XDECREF(zeroF);
+	Py_XDECREF(scaleF);
+	Py_XDECREF(dataF);
+	
+	return NULL;
 }
 
 PyDoc_STRVAR(OptimizeDataLevels4Bit_doc, \
@@ -1785,18 +2187,20 @@ Outputs:\n\
 */
 
 static PyMethodDef SpecMethods[] = {
+	{"BindToCore",             (PyCFunction) BindToCore,             METH_VARARGS,               BindToCore_doc             },
+	{"BindOpenMPToCores",      (PyCFunction) BindOpenMPToCores,      METH_VARARGS,               BindOpenMPToCores_doc      }, 
 	{"PulsarEngineRaw",        (PyCFunction) PulsarEngineRaw,        METH_VARARGS|METH_KEYWORDS, PulsarEngineRaw_doc        },
 	{"PulsarEngineRawWindow",  (PyCFunction) PulsarEngineRawWindow,  METH_VARARGS|METH_KEYWORDS, PulsarEngineRawWindow_doc  },
-	{"PhaseRotator",           (PyCFunction) PhaseRotator,           METH_VARARGS,               PhaseRotator_doc           },
+	{"PhaseRotator",           (PyCFunction) PhaseRotator,           METH_VARARGS|METH_KEYWORDS, PhaseRotator_doc           },
 	{"ComputeSKMask",          (PyCFunction) ComputeSKMask,          METH_VARARGS,               ComputeSKMask_doc          },
 	{"ComputePseudoSKMask",    (PyCFunction) ComputePseudoSKMask,    METH_VARARGS,               ComputePseudoSKMask_doc    },
-	{"MultiChannelCD",         (PyCFunction) MultiChannelCD,         METH_VARARGS,               MultiChannelCD_doc         },
-	{"CombineToIntensity",     (PyCFunction) CombineToIntensity,     METH_VARARGS,               CombineToIntensity_doc     }, 
-	{"CombineToLinear",        (PyCFunction) CombineToLinear,        METH_VARARGS,               CombineToLinear_doc        }, 
-	{"CombineToCircular",      (PyCFunction) CombineToCircular,      METH_VARARGS,               CombineToCircular_doc      }, 
-	{"CombineToStokes",        (PyCFunction) CombineToStokes,        METH_VARARGS,               CombineToStokes_doc        },
-	{"OptimizeDataLevels8Bit", (PyCFunction) OptimizeDataLevels8Bit, METH_VARARGS,               OptimizeDataLevels8Bit_doc },
-	{"OptimizeDataLevels4Bit", (PyCFunction) OptimizeDataLevels4Bit, METH_VARARGS,               OptimizeDataLevels4Bit_doc },
+	{"MultiChannelCD",         (PyCFunction) MultiChannelCD,         METH_VARARGS|METH_KEYWORDS, MultiChannelCD_doc         },
+	{"CombineToIntensity",     (PyCFunction) CombineToIntensity,     METH_VARARGS|METH_KEYWORDS, CombineToIntensity_doc     }, 
+	{"CombineToLinear",        (PyCFunction) CombineToLinear,        METH_VARARGS|METH_KEYWORDS, CombineToLinear_doc        }, 
+	{"CombineToCircular",      (PyCFunction) CombineToCircular,      METH_VARARGS|METH_KEYWORDS, CombineToCircular_doc      }, 
+	{"CombineToStokes",        (PyCFunction) CombineToStokes,        METH_VARARGS|METH_KEYWORDS, CombineToStokes_doc        },
+	{"OptimizeDataLevels8Bit", (PyCFunction) OptimizeDataLevels8Bit, METH_VARARGS|METH_KEYWORDS, OptimizeDataLevels8Bit_doc },
+	{"OptimizeDataLevels4Bit", (PyCFunction) OptimizeDataLevels4Bit, METH_VARARGS|METH_KEYWORDS, OptimizeDataLevels4Bit_doc },
 	{NULL,                     NULL,                                 0,                          NULL                       }
 };
 
