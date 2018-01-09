@@ -3,13 +3,16 @@
 
 import os
 import sys
+import copy
 import ephem
 import struct
 import getopt
 from datetime import datetime
+from collections import deque
 
+from lsl.reader.ldp import DRXFile
+from lsl.reader import drx, errors, buffer
 from lsl import astro
-from lsl.reader import drx
 from lsl.common import progress
 from lsl.common.dp import fS
 
@@ -65,121 +68,174 @@ def parseConfig(args):
 	return config
 
 
+class RawDRXFrame(object):
+	"""
+	Class to help hold and work with a raw (packed) DRX frame.
+	"""
+	
+	def __init__(self, contents):
+		self.contents = bytearray(contents)
+		if len(self.contents) != drx.FrameSize:
+			raise errors.eofError
+		if self.contents[0] != 0xDE or self.contents[1] != 0xC0 or self.contents[2] != 0xDE or self.contents[3] != 0x5c:
+			raise errors.syncError
+			
+	def __getitem__(self, key):
+		return self.contents[key]
+		
+	def __setitem__(self, key, value):
+		self.contents[key] = value
+		
+	def parseID(self):
+		id = self.contents[4]
+		id = (id & 7), ((id >> 3) & 7), ((id >> 7) & 1)
+		return id
+		
+	@property
+	def timeTag(self):
+		timeTag = 0L
+		timeTag |= self.contents[16] << 56
+		timeTag |= self.contents[17] << 48
+		timeTag |= self.contents[18] << 40
+		timeTag |= self.contents[19] << 32
+		timeTag |= self.contents[20] << 24
+		timeTag |= self.contents[21] << 16
+		timeTag |= self.contents[22] <<  8
+		timeTag |= self.contents[23]
+		return timeTag
+		
+	@property
+	def tNom(self):
+		tNom = (self.contents[14] << 8) | self.contents[15]
+		return tNom
+
+
+class RawDRXFrameBuffer(buffer.FrameBuffer):
+	"""
+	A sub-type of FrameBuffer specifically for dealing with raw (packed) DRX 
+	frames.  See :class:`lsl.reader.buffer.FrameBuffer` for a description of 
+	how the buffering is implemented.
+	
+	Keywords:
+	beams
+	  list of beam to expect packets for
+	  
+	tunes
+	  list of tunings to expect packets for
+	  
+	pols
+	  list of polarizations to expect packets for
+	  
+	nSegments
+	  number of ring segments to use for the buffer (default is 10)
+	  
+	ReorderFrames
+	  whether or not to reorder frames returned by get() or flush() by 
+	  stand/polarization (default is False)
+	  
+	The number of segements in the ring can be converted to a buffer time in 
+	seconds:
+	
+	+----------+--------------------------------------------------+
+	|          |                 DRX Filter Code                  |
+	| Segments +------+------+------+------+------+-------+-------+
+	|          |  1   |  2   |  3   |  4   |  5   |  6    |  7    |
+	+----------+------+------+------+------+------+-------+-------+
+	|    10    | 0.16 | 0.08 | 0.04 | 0.02 | 0.01 | 0.004 | 0.002 |
+	+----------+------+------+------+------+------+-------+-------+
+	|    20    | 0.33 | 0.16 | 0.08 | 0.04 | 0.02 | 0.008 | 0.004 |
+	+----------+------+------+------+------+------+-------+-------+
+	|    30    | 0.49 | 0.25 | 0.12 | 0.06 | 0.03 | 0.013 | 0.006 |
+	+----------+------+------+------+------+------+-------+-------+
+	|    40    | 0.66 | 0.33 | 0.16 | 0.08 | 0.03 | 0.017 | 0.008 |
+	+----------+------+------+------+------+------+-------+-------+
+	|    50    | 0.82 | 0.41 | 0.20 | 0.10 | 0.04 | 0.021 | 0.010 |
+	+----------+------+------+------+------+------+-------+-------+
+	|   100    | 1.64 | 0.82 | 0.41 | 0.20 | 0.08 | 0.042 | 0.021 |
+	+----------+------+------+------+------+------+-------+-------+
+	
+	"""
+	
+	def __init__(self, beams=[], tunes=[1,2], pols=[0, 1], nSegments=10, ReorderFrames=False):
+		super(RawDRXFrameBuffer, self).__init__(mode='DRX', beams=beams, tunes=tunes, pols=pols, nSegments=nSegments, ReorderFrames=ReorderFrames)
+		
+	def calcFrames(self):
+		"""
+		Calculate the maximum number of frames that we expect from 
+		the setup of the observations and a list of tuples that describes
+		all of the possible stand/pol combination.
+		"""
+		
+		nFrames = 0
+		frameList = []
+		
+		nFrames = len(self.beams)*len(self.tunes)*len(self.pols)
+		for beam in self.beams:
+			for tune in self.tunes:
+				for pol in self.pols:
+					frameList.append((beam,tune,pol))
+					
+		return (nFrames, frameList)
+		
+	def figureOfMerit(self, frame):
+		"""
+		Figure of merit for sorting frames.  For DRX it is:
+		    <frame timetag in ticks>
+		"""
+		
+		return frame.timeTag
+	
+	def createFill(self, key, frameParameters):
+		"""
+		Create a 'fill' frame of zeros using an existing good
+		packet as a template.
+		"""
+
+		# Get a template based on the first frame for the current buffer
+		fillFrame = copy.deepcopy(self.buffer[key][0])
+		
+		# Get out the frame parameters and fix-up the header
+		beam, tune, pol = frameParameters
+		fillFrame[4] = (beam & 7) | ((tune & 7) << 3) | ((pol & 1) << 7)
+		
+		# Zero the data for the fill packet
+		fillFrame[32:] = '\x00'*4096
+		
+		return fillFrame
+
+
 def main(args):
 	config = parseConfig(args)
 	
 	# Open the file
-	fh = open(config['args'][0], "rb")
-	sizeB = os.path.getsize(config['args'][0])
-	nFramesFile = sizeB / drx.FrameSize
-	
-	# Find the good data (non-zero decimation)
-	while True:
-		try:
-			junkFrame = drx.readFrame(fh)
-			srate = junkFrame.getSampleRate()
-			t0 = junkFrame.getTime()
-			break
-		except ZeroDivisionError:
-			pass
-	fh.seek(-drx.FrameSize, 1)
-	
+	idf = DRXFile(config['args'][0])
+	config['offset'] = idf.offset(config['offset'])
+
 	# Load in basic information about the data
-	junkFrame = drx.readFrame(fh)
-	fh.seek(-drx.FrameSize, 1)
-	## What's in the data?
-	srate = junkFrame.getSampleRate()
-	beams = drx.getBeamCount(fh)
-	tunepols = drx.getFramesPerObs(fh)
-	tunepol = tunepols[0] + tunepols[1] + tunepols[2] + tunepols[3]
-	beampols = tunepol
-	
-	# Offset in frames for beampols beam/tuning/pol. sets
-	offset = int(round(config['offset'] * srate / 4096 * beampols))
-	offset = int(1.0 * offset / beampols) * beampols
-	fh.seek(offset*drx.FrameSize, 1)
-	
-	# Iterate on the offsets until we reach the right point in the file.  This
-	# is needed to deal with files that start with only one tuning and/or a 
-	# different sample rate.  
-	while True:
-		## Figure out where in the file we are and what the current tuning/sample 
-		## rate is
-		junkFrame = drx.readFrame(fh)
-		srate = junkFrame.getSampleRate()
-		t1 = junkFrame.getTime()
-		tunepols = drx.getFramesPerObs(fh)
-		tunepol = tunepols[0] + tunepols[1] + tunepols[2] + tunepols[3]
-		beampols = tunepol
-		fh.seek(-drx.FrameSize, 1)
-		
-		## See how far off the current frame is from the target
-		tDiff = t1 - (t0 + config['offset'])
-		
-		## Half that to come up with a new seek parameter
-		tCorr = -tDiff / 2.0
-		cOffset = int(tCorr * srate / 4096 * beampols)
-		cOffset = int(1.0 * cOffset / beampols) * beampols
-		offset += cOffset
-		
-		## If the offset is zero, we are done.  Otherwise, apply the offset
-		## and check the location in the file again/
-		if cOffset is 0:
-			break
-		fh.seek(cOffset*drx.FrameSize, 1)
-		
-	# Update the offset actually used
-	config['offset'] = t1 - t0
-	
-	# Line up the time tags for the various tunings/polarizations
-	timeTags = []
-	for i in xrange(16):
-		junkFrame = drx.readFrame(fh)
-		timeTags.append(junkFrame.data.timeTag)
-	fh.seek(-16*drx.FrameSize, 1)
-	
-	i = 0
-	while (timeTags[i+0] != timeTags[i+1]) or (timeTags[i+0] != timeTags[i+2]) or (timeTags[i+0] != timeTags[i+3]):
-		i += 1
-		fh.seek(drx.FrameSize, 1)
-		
-	# Load in basic information about the data
-	junkFrame = drx.readFrame(fh)
-	fh.seek(-drx.FrameSize, 1)
-	## What's in the data?
-	srate = junkFrame.getSampleRate()
-	beams = drx.getBeamCount(fh)
-	tunepols = drx.getFramesPerObs(fh)
-	tunepol = tunepols[0] + tunepols[1] + tunepols[2] + tunepols[3]
-	beampols = tunepol
+	nFramesFile = idf.getInfo('nFrames')
+	srate = idf.getInfo('sampleRate')
+	ttSkip = int(round(196e6/srate))*4096
+	beam = idf.getInfo('beam')
+	beampols = idf.getInfo('beampols')
+	tunepol = beampols
+	nFramesFile -= int(config['offset']*srate/4096)*tunepol
 	
 	## Date
-	beginDate = ephem.Date(astro.unix_to_utcjd(junkFrame.getTime()) - astro.DJD_OFFSET)
+	beginDate = ephem.Date(astro.unix_to_utcjd(idf.getInfo('tStart')) - astro.DJD_OFFSET)
 	beginTime = beginDate.datetime()
-	mjd = astro.jd_to_mjd(astro.unix_to_utcjd(junkFrame.getTime()))
+	mjd = astro.jd_to_mjd(astro.unix_to_utcjd(idf.getInfo('tStart')))
 	mjd_day = int(mjd)
 	mjd_sec = (mjd-mjd_day)*86400
 	
-	## Tuning frequencies and initial time tags
-	ttStep = int(fS / srate * 4096)
-	ttFlow = [0, 0, 0, 0]
-	for i in xrange(4):
-		junkFrame = drx.readFrame(fh)
-		beam,tune,pol = junkFrame.parseID()
-		aStand = 2*(tune-1) + pol
-		ttFlow[aStand] = junkFrame.data.timeTag - ttStep
-		
-		if tune == 1:
-			centralFreq1 = junkFrame.getCentralFreq()
-		else:
-			centralFreq2 = junkFrame.getCentralFreq()
-	fh.seek(-4*drx.FrameSize, 1)
+	## Tuning frequencies
+	centralFreq1 = idf.getInfo('freq1')
+	centralFreq2 = idf.getInfo('freq2')
+	beam = idf.getInfo('beam')
 	
 	# File summary
 	print "Input Filename: %s" % config['args'][0]
 	print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
-	print "Beams: %i" % beams
-	print "Tune/Pols: %i %i %i %i" % tunepols
+	print "Tune/Pols: %i" % tunepol
 	print "Tunings: %.1f Hz, %.1f Hz" % (centralFreq1, centralFreq2)
 	print "Sample Rate: %i Hz" % srate
 	print "Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol)
@@ -198,6 +254,9 @@ def main(args):
 	outname = os.path.splitext(outname)[0]
 	print "Writing %.2f s to file '%s_b%it[12].dat'" % (nCaptures*4096/srate, outname, beam)
 	
+	# Ready the internal interface for file access
+	fh = idf.fh
+		
 	# Ready the output files - one for each tune/pol
 	fhOut = []
 	fhOut.append( open("%s_b%it1.dat" % (outname, beam), 'wb') )
@@ -209,36 +268,68 @@ def main(args):
 		pb = progress.ProgressBar(max=nCaptures)
 		
 	newFrame = bytearray([0 for i in xrange(32+4096*2)])
-	for c in xrange(int(nCaptures)):
-		## Create a place to save the frame pairs
-		pairs = [[None,None], 
-			    [None, None]]
-			    
-		## Load in the frame pairs
+	
+	# Setup the buffer
+	buffer = RawDRXFrameBuffer(beams=[beam,], ReorderFrames=True)
+	
+	# Go!
+	c = 0
+	eofFound = False
+	while c < int(nCaptures):
+		if eofFound:
+			break
+			
+		## Load in some frames
+		rFrames = deque()
 		for i in xrange(tunepol):
-			cFrame = fh.read(drx.FrameSize)
-			id = struct.unpack('>B', cFrame[4])[0]
-			tuning = (id>>3)&7
-			pol    = (id>>7)&1
+			try:
+				rFrames.append( RawDRXFrame(fh.read(drx.FrameSize)) )
+				#print rFrames[-1].parseID(), rFrames[-1].timeTag, c, i
+			except errors.eofError:
+				eofFound = True
+				buffer.append(rFrames)
+				break
+			except errors.syncError:
+				continue
+				
+		buffer.append(rFrames)
+		rFrames = buffer.get()
+		
+		## Continue adding frames if nothing comes out.
+		if rFrames is None:
+			continue
 			
-			pairs[tuning-1][pol] = cFrame
-			
+		## If something comes out, process it
 		for tuning in (1, 2):
+			### Load
+			pair0 = rFrames[2*(tuning-1)+0]
+			pair1 = rFrames[2*(tuning-1)+1]
+			
 			### ID manipulation
-			idX = struct.unpack('>B', pairs[tuning-1][0][4])[0]
-			#idY = struct.unpack('>B', pairs[tuning-1][1][4])[0]
+			idX = pair0[4]
+			#idY = pair1[4]
 			id = (0<<7) | (1<<6) | (idX&(7<<3)) | (idX&7)
 			
 			### Time tag manipulation to remove the T_NOM offset
-			tNomX, timetagX = struct.unpack('>HQ', pairs[tuning-1][0][14:24])
-			#tNomY, timetagX = struct.unpack('>HQ', pairs[tuning-1][1][14:24])
+			tNomX, timetagX = pair0.tNom, pair0.timeTag
+			#tNomY, timetagX = pair1.tNom, pair1.timeTag
 			tNom = tNomX - tNomX
 			timetag = timetagX - tNomX
 			
+			## Check for timetag problems
+			if tuning == 1:
+				try:
+					ttDiff = timetag - ttLast
+					if ttDiff != ttSkip:
+						print "WARNING:  timetag skip at %i, %i != %i (%.1f frames)" % (c, ttDiff, ttSkip, 1.0*ttDiff/ttSkip)
+				except NameError:
+					pass
+				ttLast = timetag
+				
 			### Build the new frame
-			newFrame[0:32] = pairs[tuning-1][0][0:32]
-			newFrame[32:8224:2] = pairs[tuning-1][0][32:]
-			newFrame[33:8224:2] = pairs[tuning-1][1][32:]
+			newFrame[0:32] = pair0[0:32]
+			newFrame[32:8224:2] = pair0[32:]
+			newFrame[33:8224:2] = pair1[32:]
 			
 			### Update the quatities that have changed
 			newFrame[4] = struct.pack('>B', id)
@@ -247,11 +338,65 @@ def main(args):
 			### Save
 			fhOut[tuning-1].write(newFrame)
 			
+		c += 1
 		pb.inc(amount=1)
-		if c != 0 and c % 100 == 0:
+		if c != 0 and c % 5000 == 0:
 			sys.stdout.write(pb.show()+'\r')
 			sys.stdout.flush()
 			
+	# If we've hit the end of the file and haven't read in enough frames, 
+	# flush the buffer
+	if eofFound or c < int(nCaptures):
+		for rFrames in buffer.flush():
+			if c == int(nCaptures):
+				break
+				
+			for tuning in (1, 2):
+				### Load
+				pair0 = rFrames[2*(tuning-1)+0]
+				pair1 = rFrames[2*(tuning-1)+1]
+				
+				### ID manipulation
+				idX = pair0[4]
+				#idY = pair1[4]
+				id = (0<<7) | (1<<6) | (idX&(7<<3)) | (idX&7)
+				
+				### Time tag manipulation to remove the T_NOM offset
+				tNomX, timetagX = pair0.tNom, pair0.timeTag
+				#tNomY, timetagX = pair1.tNom, pair1.timeTag
+				tNom = tNomX - tNomX
+				timetag = timetagX - tNomX
+				
+				## Check for timetag problems
+				if tuning == 1:
+					try:
+						ttDiff = timetag - ttLast
+						if ttDiff != ttSkip:
+							print "WARNING:  timetag skip at %i, %i != %i (%i frames)" % (c, ttDiff, ttSkip, ttDiff/ttSkip)
+					except NameError:
+						pass
+					ttLast = timetag
+					
+				### Build the new frame
+				newFrame[0:32] = pair0[0:32]
+				newFrame[32:8224:2] = pair0[32:]
+				newFrame[33:8224:2] = pair1[32:]
+				
+				### Update the quatities that have changed
+				newFrame[4] = struct.pack('>B', id)
+				newFrame[14:24] = struct.pack('>HQ', tNom, timetag)
+				
+				### Save
+				fhOut[tuning-1].write(newFrame)
+				
+			c += 1
+			pb.inc(amount=1)
+			if c != 0 and c % 5000 == 0:
+				sys.stdout.write(pb.show()+'\r')
+				sys.stdout.flush()
+				
+	# Update the progress bar with the total time used
+	pb.amount = pb.max
 	sys.stdout.write(pb.show()+'\n')
 	sys.stdout.flush()
 	for f in fhOut:
