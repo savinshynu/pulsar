@@ -321,7 +321,7 @@ def main(args):
 				try:
 					ttDiff = timetag - ttLast
 					if ttDiff != ttSkip:
-						print "WARNING:  timetag skip at %i, %i != %i (%.1f frames)" % (c, ttDiff, ttSkip, 1.0*ttDiff/ttSkip)
+						raise RuntimeError("timetag skip at %i, %i != %i (%.1f frames)" % (c, ttDiff, ttSkip, 1.0*ttDiff/ttSkip))
 				except NameError:
 					pass
 				ttLast = timetag
@@ -372,7 +372,7 @@ def main(args):
 					try:
 						ttDiff = timetag - ttLast
 						if ttDiff != ttSkip:
-							print "WARNING:  timetag skip at %i, %i != %i (%i frames)" % (c, ttDiff, ttSkip, ttDiff/ttSkip)
+							raise RuntimeError("timetag skip at %i, %i != %i (%.1f frames)" % (c, ttDiff, ttSkip, 1.0*ttDiff/ttSkip))
 					except NameError:
 						pass
 					ttLast = timetag
