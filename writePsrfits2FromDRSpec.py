@@ -203,7 +203,7 @@ def main(args):
 		polNames = 'I'
 		nPols = 1
 		def reduceEngine(x):
-			y = numpy.zeros((2,x.shape[1]), dtype=numpy.float64)
+			y = numpy.zeros((2,x.shape[1]), dtype=numpy.float32)
 			y[0,:] += x[0,:]
 			y[0,:] += x[1,:]
 			y[1,:] += x[2,:]
@@ -213,7 +213,7 @@ def main(args):
 		config['sumPols'] = False
 		polNames = ''.join(dataProducts)
 		nPols = len(dataProducts)
-		reduceEngine = lambda x: x
+		reduceEngine = lambda x: x.astype(numpy.float32)
 		
 	if config['dataBits'] == 4:
 		OptimizeDataLevels = OptimizeDataLevels4Bit
