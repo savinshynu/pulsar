@@ -151,22 +151,22 @@ def telescope2tempo(tel):
     """
     
     tempoObservatorCodes = { 'gbt': 'GB', 
-                        'arecibo': 'AO', 
-                        'vla': 'VL', 
-                        'parkes': 'PK', 
-                        'jodrell': 'JB', 
-                        'gb43m': 'G1', 
-                        'gb 140ft': 'G1', 
-                        'nrao20': 'G1', 
-                        'nancay': 'NC', 
-                        'effelsberg': 'EF', 
-                        'srt': 'SR', 
-                        'wsrt': 'WT', 
-                        'gmrt': 'GM', 
-                        'lofar': 'LF', 
-                        'lwa': 'LW', 
-                        'mwa': 'MW', 
-                        'geocenter': 'EC', }
+                             'arecibo': 'AO', 
+                             'vla': 'VL', 
+                             'parkes': 'PK', 
+                             'jodrell': 'JB', 
+                             'gb43m': 'G1', 
+                             'gb 140ft': 'G1', 
+                             'nrao20': 'G1', 
+                             'nancay': 'NC', 
+                             'effelsberg': 'EF', 
+                             'srt': 'SR', 
+                             'wsrt': 'WT', 
+                             'gmrt': 'GM', 
+                             'lofar': 'LF', 
+                             'lwa': 'LW', 
+                             'mwa': 'MW', 
+                             'geocenter': 'EC', }
             
     try:
         return tempoObservatorCodes[tel.lower()]
