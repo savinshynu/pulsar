@@ -1613,7 +1613,7 @@ class MainWindow(wx.Frame):
         Open a file.
         """
         
-        dlg = wx.FileDialog(self, "Choose a file", self.dirname, "", "Single Pulse (*.singlePulse)|*.singlePulse|All Files|*.*", wx.OPEN)
+        dlg = wx.FileDialog(self, "Choose a file", self.dirname, "", "Single Pulse (*.singlePulse)|*.singlePulse|All Files|*.*", wx.FD_OPEN)
         if dlg.ShowModal() == wx.ID_OK:
             self.filename = dlg.GetFilename()
             self.dirname = dlg.GetDirectory()
