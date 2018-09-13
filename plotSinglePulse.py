@@ -49,6 +49,15 @@ __revision__ = "$Rev$"
 __author__ = "Jayce Dowell"
 
 
+# Deal with the different wxPython versions
+if 'phoenix' in wx.PlatformInfo:
+    AppendMenuItem = lambda x, y: x.Append(y)
+    AppendMenuMenu = lambda *args, **kwds: args[0].Append(*args[1:], **kwds)
+else:
+    AppendMenuItem = lambda x, y: x.AppendItem(y)
+    AppendMenuMenu = lambda *args, **kwds: args[0].AppendMenu(*args[1:], **kwds)
+
+
 def usage(exitCode=None):
     print """plotSinglePulse.py - Read in a collection of .singlepulse files
 and plot them interactively
@@ -1417,10 +1426,10 @@ class MainWindow(wx.Frame):
         
         ## File Menu
         open = wx.MenuItem(fileMenu, ID_OPEN, "&Open")
-        fileMenu.AppendItem(open)
+        AppendMenuItem(fileMenu, open)
         fileMenu.AppendSeparator()
         exit = wx.MenuItem(fileMenu, ID_QUIT, "E&xit")
-        fileMenu.AppendItem(exit)
+        AppendMenuItem(fileMenu, exit)
         
         ## Color Menu
         vmap = wx.Menu()
@@ -1428,7 +1437,7 @@ class MainWindow(wx.Frame):
         vmap.AppendRadioItem(ID_COLOR_VALUE_SNR, '&S/N')
         vmap.AppendRadioItem(ID_COLOR_VALUE_TIME, '&Time')
         vmap.AppendRadioItem(ID_COLOR_VALUE_WIDTH, '&Width')
-        colorMenu.AppendMenu(-1, 'Color &Mapping', vmap)
+        AppendMenuMenu(colorMenu, -1, 'Color &Mapping', vmap)
         vmap.Check(ID_COLOR_VALUE_WIDTH, True)
         self.vmapMenu = vmap
         cmap = wx.Menu()
@@ -1444,7 +1453,7 @@ class MainWindow(wx.Frame):
         cmap.AppendRadioItem(ID_COLOR_MAP_GRAY, '&Gray')
         cmap.AppendSeparator()
         cmap.AppendCheckItem(ID_COLOR_INVERT, 'In&vert')
-        colorMenu.AppendMenu(-1, 'Color &Map', cmap)
+        AppendMenuMenu(colorMenu, -1, 'Color &Map', cmap)
         cmap.Check(ID_COLOR_MAP_JET, True)
         self.cmapMenu = cmap
         smap = wx.Menu()
@@ -1455,7 +1464,7 @@ class MainWindow(wx.Frame):
         smap.AppendRadioItem(ID_COLOR_STRETCH_ASINH, '&ASinh')
         smap.AppendRadioItem(ID_COLOR_STRETCH_SINH, '&Sinh')
         smap.AppendRadioItem(ID_COLOR_STRETCH_HIST, '&Histogram Equalization')
-        colorMenu.AppendMenu(-1, 'Color &Stretch', smap)
+        AppendMenuMenu(colorMenu, -1, 'Color &Stretch', smap)
         smap.Check(ID_COLOR_STRETCH_LINEAR, True)
         self.smapMenu = smap
         
@@ -1478,12 +1487,12 @@ class MainWindow(wx.Frame):
         amap.Check(ID_DATA_SIZE_SNR, True)
         self.amapMenu = amap
         tadj = wx.MenuItem(dataMenu, ID_DATA_ADJUST, 'Adjust &Thresholds')
-        dataMenu.AppendItem(tadj)
+        AppendMenuItem(dataMenu, tadj)
         
         ## Display Menu
         displayMenu.AppendCheckItem(ID_DISPLAY_DECIMATE, '&Decimation')
         dadj = wx.MenuItem(dataMenu, ID_DISPLAY_DECIMATE_ADJUST, '&Decimation Adjust')
-        displayMenu.AppendItem(dadj)
+        AppendMenuItem(displayMenu, dadj)
         self.dadj = dadj
         if not self.data.fullRes:
             displayMenu.Check(ID_DISPLAY_DECIMATE, True)
@@ -1493,10 +1502,10 @@ class MainWindow(wx.Frame):
             
         ## Help menu items
         help = wx.MenuItem(helpMenu, ID_HELP, 'plotSinglePulse Handbook\tF1')
-        helpMenu.AppendItem(help)
+        AppendMenuItem(helpMenu, help)
         helpMenu.AppendSeparator()
         about = wx.MenuItem(helpMenu, ID_ABOUT, '&About')
-        helpMenu.AppendItem(about)
+        AppendMenuItem(helpMenu, about)
         
         # Creating the menubar.
         menuBar.Append(fileMenu,"&File") # Adding the "filemenu" to the MenuBar
@@ -1518,17 +1527,17 @@ class MainWindow(wx.Frame):
         # Add SNR histogram plot
         panel1 = wx.Panel(self, -1)
         hbox1 = wx.BoxSizer(wx.HORIZONTAL)
-        self.figure1a = Figure()
+        self.figure1a = Figure(figsize=(2,2))
         self.canvas1a = FigureCanvasWxAgg(panel1, -1, self.figure1a)
         hbox1.Add(self.canvas1a, 1, wx.ALIGN_LEFT | wx.EXPAND)
         
         # Add a DM histogram plot
-        self.figure1b = Figure()
+        self.figure1b = Figure(figsize=(2,2))
         self.canvas1b = FigureCanvasWxAgg(panel1, -1, self.figure1b)
         hbox1.Add(self.canvas1b, 1, wx.ALIGN_CENTER | wx.EXPAND)
         
         # Add DM vs SNR plot
-        self.figure1c = Figure()
+        self.figure1c = Figure(figsize=(2,2))
         self.canvas1c = FigureCanvasWxAgg(panel1, -1, self.figure1c)
         hbox1.Add(self.canvas1c, 1, wx.ALIGN_RIGHT | wx.EXPAND)
         panel1.SetSizer(hbox1)
@@ -1537,12 +1546,12 @@ class MainWindow(wx.Frame):
         # Add a time vs DM vs SNR (with toolbar)
         panel3 = wx.Panel(self, -1)
         hbox3 = wx.BoxSizer(wx.VERTICAL)
-        self.figure2 = Figure()
+        self.figure2 = Figure(figsize=(6,2))
         self.canvas2 = FigureCanvasWxAgg(panel3, -1, self.figure2)
         self.toolbar = RefreshAwareToolbar(self.canvas2, refreshCallback=self.data.draw)
         self.toolbar.Realize()
         hbox3.Add(self.canvas2, 1, wx.EXPAND)
-        hbox3.Add(self.toolbar, 0, wx.ALIGN_LEFT | wx.FIXED_MINSIZE)
+        hbox3.Add(self.toolbar, 0, wx.ALIGN_LEFT | wx.EXPAND)
         panel3.SetSizer(hbox3)
         vbox.Add(panel3, 1, wx.EXPAND)
         self.panel3 = panel3
@@ -2205,7 +2214,7 @@ class SliceDisplay(wx.Frame):
         self.toolbar = NavigationToolbar2WxAgg(self.canvas)
         self.toolbar.Realize()
         vbox1.Add(self.canvas,  1, wx.EXPAND)
-        vbox1.Add(self.toolbar, 0, wx.LEFT | wx.FIXED_MINSIZE)
+        vbox1.Add(self.toolbar, 0, wx.ALIGN_LEFT | wx.EXPAND)
         panel1.SetSizer(vbox1)
         hbox.Add(panel1, 1, wx.EXPAND)
         
@@ -2444,9 +2453,9 @@ class WaterfallDisplay(wx.Frame):
         
         ## Color Menu
         auto = wx.MenuItem(colorMenu, ID_WATERFALL_AUTO, '&Auto-scale Colorbar')
-        colorMenu.AppendItem(auto)
+        AppendMenuItem(colorMenu, auto)
         cadj = wx.MenuItem(colorMenu, ID_WATERFALL_ADJUST, 'Adjust &Contrast')
-        colorMenu.AppendItem(cadj)
+        AppendMenuItem(colorMenu, cadj)
         cmap = wx.Menu()
         cmap.AppendRadioItem(ID_WATERFALL_MAP_PAIRED, '&Paired')
         cmap.AppendRadioItem(ID_WATERFALL_MAP_SPECTRAL, "&Spectral")
@@ -2485,7 +2494,7 @@ class WaterfallDisplay(wx.Frame):
         dataMenu.Check(ID_WATERFALL_DECIMATION_AUTO, True)
         self.adec = adec
         dadj = wx.MenuItem(dataMenu, ID_WATERFALL_DECIMATION_ADJUST, 'Adjust Time &Decimation')
-        dataMenu.AppendItem(dadj)
+        AppendMenuItem(dataMenu, dadj)
         dadj.Enable(False)
         self.dadj = dadj
             
@@ -2524,7 +2533,7 @@ class WaterfallDisplay(wx.Frame):
         self.toolbar = NavigationToolbar2WxAgg(self.canvas)
         self.toolbar.Realize()
         vbox1.Add(self.canvas,  1, wx.EXPAND)
-        vbox1.Add(self.toolbar, 0, wx.LEFT | wx.FIXED_MINSIZE)
+        vbox1.Add(self.toolbar, 0, wx.ALIGN_LEFT | wx.EXPAND)
         panel1.SetSizer(vbox1)
         hbox.Add(panel1, 1, wx.EXPAND)
         
