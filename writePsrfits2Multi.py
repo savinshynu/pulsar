@@ -61,6 +61,8 @@ Options:
 -4, --4bit-data             Save the spectra in 4-bit mode (default = 8-bit)
 -t, --subsample-correction  Enable sub-sample delay correction
 -q, --queue-depth           Reader queue depth (default = 3)
+-y, --yes                   Accept the file alignment as is 
+                            (default = prompt the user to accept)
 
 Note:  If a source name is provided and the RA or declination is not, the script
     will attempt to determine these values.
@@ -90,10 +92,11 @@ def parseOptions(args):
     config['dec'] = None
     config['dataBits'] = 8
     config['enableSubSample'] = False
+    config['accept'] = False
     
     # Read in and process the command line flags
     try:
-        opts, args = getopt.getopt(args, "hc:b:pniks:o:r:d:4tq:", ["help", "nchan=", "nsblk=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode", "subsample-correction", "queue-depth="])
+        opts, args = getopt.getopt(args, "hc:b:pniks:o:r:d:4tq:y", ["help", "nchan=", "nsblk=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode", "subsample-correction", "queue-depth=", "yes"])
     except getopt.GetoptError, err:
         # Print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -133,6 +136,8 @@ def parseOptions(args):
         elif opt in ('-q', '--queue-depth'):
             global MAX_QUEUE_DEPTH
             MAX_QUEUE_DEPTH = max([1, int(value, 10)])
+        elif opt in ('-y', '--yes'):
+            config['accept'] = True
         else:
             assert False
             
@@ -311,9 +316,12 @@ def main(args):
         residualOffsets.append( residualOffset )
     print "Minimum Residual: %i ticks (%.1f ns)" % (min(residualOffsets), min(residualOffsets)*(1e9/fS))
     print "Maximum Residual: %i ticks (%.1f ns)" % (max(residualOffsets), max(residualOffsets)*(1e9/fS))
-    out = raw_input('=> Accept? [Y/n] ')
-    if out == 'n' or out == 'N':
-        sys.exit()
+    if not config['accept']:
+        out = raw_input('=> Accept? [Y/n] ')
+        if out == 'n' or out == 'N':
+            sys.exit()
+    else:
+        print "=> Accepted via the command line"
     print " "
     
     # Setup the processing constraints
