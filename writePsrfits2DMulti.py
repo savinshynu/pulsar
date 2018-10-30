@@ -49,6 +49,8 @@ Usage: writePsrfits2Multi.py [OPTIONS] DM file
 
 Options:
 -h, --help                  Display this help information
+-j, --skip                  Skip the specified number of seconds at the 
+                            beginning of each file (default = 0)
 -o, --output                Output file basename
 -c, --nchan                 Set FFT length (default = 512)
 -b, --nsblk                 Set spectra per sub-block (default = 4096)
@@ -80,6 +82,7 @@ Note:  Setting -i/--circularize or -k/--stokes disables polarization summing
 def parseOptions(args):
     config = {}
     # Command line flags - default values
+    config['offset'] = 0.0
     config['output'] = None
     config['args'] = []
     config['nchan'] = 512
@@ -97,7 +100,7 @@ def parseOptions(args):
     
     # Read in and process the command line flags
     try:
-        opts, args = getopt.getopt(args, "hc:b:pniks:o:r:d:4tq:y", ["help", "nchan=", "nsblk=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode", "subsample-correction", "queue-depth=", "yes"])
+        opts, args = getopt.getopt(args, "hj:c:b:pniks:o:r:d:4tq:y", ["help", "skip=", "nchan=", "nsblk=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode", "subsample-correction", "queue-depth=", "yes"])
     except getopt.GetoptError, err:
         # Print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -107,6 +110,8 @@ def parseOptions(args):
     for opt, value in opts:
         if opt in ('-h', '--help'):
             usage(exitCode=0)
+        elif opt in ('-j', '--skip'):
+            config['offset'] = float(value)
         elif opt in ('-c', '--nchan'):
             config['nchan'] = int(value)
         elif opt in ('-b', '--nsblk'):
@@ -254,8 +259,10 @@ def main(args):
     nFrames = []
     for filename in filenames:
         idf = DRXFile(filename)
-        o = 0#idf.offset(10)
-        
+        o = 0
+        if config['offset'] != 0.0:
+            o = idf.offset(config['offset'])
+            
         # Find out how many frame sets are in each file
         srate = idf.getInfo('sampleRate')
         beampols = idf.getInfo('beampols')
@@ -271,8 +278,6 @@ def main(args):
         try:
             if srate != srateOld:
                 raise RuntimeError("Sample rate change detected in this set of files")
-            if abs(startTimes[-1] - startTimes[0]) > 2*fs:
-                raise RuntimeError("Files are not sufficiently simultaneous")
         except NameError:
             srateOld = srate
             
@@ -351,8 +356,10 @@ def main(args):
         
     for c,filename,frameOffset,sampleOffset,tickOffset in zip(range(len(filenames)), filenames, frameOffsets, sampleOffsets, tickOffsets):
         idf = DRXFile(filename)
-        o = 0#idf.offset(frameOffset*4096/srate)
-        
+        o = 0
+        if config['offset'] != 0.0:
+            o = idf.offset(config['offset'])
+            
         # Find out how many frame sets are in each file
         srate = idf.getInfo('sampleRate')
         beampols = idf.getInfo('beampols')
@@ -361,7 +368,7 @@ def main(args):
         nFramesFile -= int(o*srate/srate)*tunepol
         
         # Additional seek for timetag alignment across the files
-        o = idf.offset(frameOffset*4096/srate)
+        o += idf.offset(frameOffset*4096/srate)
         
         ## Date
         tStart = idf.getInfo('tStart') + sampleOffset*spSkip/fS + tickOffset/fS

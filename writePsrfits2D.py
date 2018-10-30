@@ -45,6 +45,8 @@ Usage: writePsrfits2D.py [OPTIONS] DM file
 
 Options:
 -h, --help                  Display this help information
+-j, --skip                  Skip the specified number of seconds at the 
+                            beginning of the file (default = 0)
 -o, --output                Output file basename
 -c, --nchan                 Set FFT length (default = 512)
 -b, --nsblk                 Set spectra per sub-block (default = 4096)
@@ -73,6 +75,7 @@ Note:  Setting -i/--circularize or -k/--stokes disables polarization summing
 def parseOptions(args):
     config = {}
     # Command line flags - default values
+    config['offset'] = 0.0
     config['output'] = None
     config['args'] = []
     config['nchan'] = 512
@@ -88,7 +91,7 @@ def parseOptions(args):
     
     # Read in and process the command line flags
     try:
-        opts, args = getopt.getopt(args, "hc:b:pniks:o:r:d:4q:", ["help", "nchan=", "nsblk=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode", "queue-depth="])
+        opts, args = getopt.getopt(args, "hj:c:b:pniks:o:r:d:4q:", ["help", "skip=", "nchan=", "nsblk=", "no-sk", "no-summing", "circularize", "stokes", "source=", "output=", "ra=", "dec=", "4bit-mode", "queue-depth="])
     except getopt.GetoptError, err:
         # Print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -98,6 +101,8 @@ def parseOptions(args):
     for opt, value in opts:
         if opt in ('-h', '--help'):
             usage(exitCode=0)
+        elif opt in ('-j', '--skip'):
+            config['offset'] = float(value)
         elif opt in ('-c', '--nchan'):
             config['nchan'] = int(value)
         elif opt in ('-b', '--nsblk'):
@@ -238,8 +243,10 @@ def main(args):
     
     # Open
     idf = DRXFile(config['args'][1])
-    o = 0#idf.offset(10)
-    
+    o = 0
+    if config['offset'] != 0.0:
+        o = idf.offset(config['offset'])
+        
     # Load in basic information about the data
     nFramesFile = idf.getInfo('nFrames')
     srate = idf.getInfo('sampleRate')
