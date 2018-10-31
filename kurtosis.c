@@ -139,7 +139,7 @@ PyObject *ComputePseudoSKMask(PyObject *self, PyObject *args, PyObject *kwds) {
 	// Bring the data into C and make it usable
 	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_DOUBLE, 2, 2);
 	if( data == NULL ) {
-		PyErr_Format(PyExc_RuntimeError, "Cannot cast input signals array to 3-D complex64");
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input signals array to 2-D float64");
 		return NULL;
 	}
 	

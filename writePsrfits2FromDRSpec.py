@@ -18,8 +18,8 @@ import getopt
 
 import psrfits_utils.psrfits_utils as pfu
 
-import lsl.reader.drspec as drspec
-import lsl.reader.errors as errors
+from lsl.reader.ldp import DRSpecFile
+from lsl.reader import errors
 import lsl.astro as astro
 import lsl.common.progress as progress
 from lsl.statistics import robust, kurtosis
@@ -35,6 +35,8 @@ Usage: writePsrfits2FromDRSpec.py [OPTIONS] file
 
 Options:
 -h, --help                  Display this help information
+-j, --skip                  Skip the specified number of seconds at the 
+                            beginning of the file (default = 0)
 -o, --output                Output file basename
 -p, --no-sk-flagging        Disable on-the-fly SK flagging of RFI
 -n, --no-summing            Do not sum polarizations for XX and YY files
@@ -58,6 +60,7 @@ Note:  Stokes-mode data will disable summing
 def parseOptions(args):
     config = {}
     # Command line flags - default values
+    config['offset'] = 0.0
     config['output'] = None
     config['args'] = []
     config['nsblk'] = 32
@@ -70,7 +73,7 @@ def parseOptions(args):
     
     # Read in and process the command line flags
     try:
-        opts, args = getopt.getopt(args, "hpns:o:r:d:4", ["help", "no-sk-flagging", "no-summing", "source=", "output=", "ra=", "dec=", "4bit-mode"])
+        opts, args = getopt.getopt(args, "hj:pns:o:r:d:4", ["help", "skip=", "no-sk-flagging", "no-summing", "source=", "output=", "ra=", "dec=", "4bit-mode"])
     except getopt.GetoptError, err:
         # Print help information and exit:
         print str(err) # will print something like "option -a not recognized"
@@ -80,6 +83,8 @@ def parseOptions(args):
     for opt, value in opts:
         if opt in ('-h', '--help'):
             usage(exitCode=0)
+        elif opt in ('-j', '--skip'):
+            config['offset'] = float(value)
         elif opt in ('-p', '--no-sk-flagging'):
             config['useSK'] = False
         elif opt in ('-n', '--no-summing'):
@@ -156,30 +161,32 @@ def main(args):
     if config['dec'] is None:
         config['dec'] = "+00:00:00.0"
         
-    fh = open(config['args'][0], "rb")
-    drspec.FrameSize = drspec.getFrameSize(fh)
-    nFramesFile = os.path.getsize(config['args'][0]) / drspec.FrameSize
-    LFFT = drspec.getTransformSize(fh)
+    # Open
+    idf = DRSpecFile(config['args'][0])
+    o = 0
+    if config['offset'] != 0.0:
+        o = idf.offset(config['offset'])
+        
+    nFramesFile = idf.getInfo('nFrames')
+    LFFT = idf.getInfo('LFFT')
     
     # Load in basic information about the data
-    junkFrame = drspec.readFrame(fh)
-    fh.seek(-drspec.FrameSize, 1)
-    ## What's in the data?
-    srate = junkFrame.getSampleRate()
-    beam = junkFrame.parseID()
-    centralFreq1 = junkFrame.getCentralFreq(1)
-    centralFreq2 = junkFrame.getCentralFreq(2)
-    srate = junkFrame.getSampleRate()
-    dataProducts = junkFrame.getDataProducts()
-    tInt = junkFrame.header.nInts*LFFT/srate
+    srate = idf.getInfo('sampleRate')
+    beam = idf.getInfo('beam')
+    centralFreq1 = idf.getInfo('freq1')
+    centralFreq2 = idf.getInfo('freq2')
+    dataProducts = idf.getInfo('dataProducts')
+    isLinear = ('XX' in dataProducts) or ('YY' in dataProducts)
+    tInt = idf.getInfo('tInt')
+    nFramesFile -= int(round(o/tInt))
     
     # Sub-integration block size
     nsblk = config['nsblk']
     
     ## Date
-    beginDate = ephem.Date(astro.unix_to_utcjd(junkFrame.getTime()) - astro.DJD_OFFSET)
+    beginDate = ephem.Date(astro.unix_to_utcjd(idf.getInfo('tStart')) - astro.DJD_OFFSET)
     beginTime = beginDate.datetime()
-    mjd = astro.jd_to_mjd(astro.unix_to_utcjd(junkFrame.getTime()))
+    mjd = astro.jd_to_mjd(astro.unix_to_utcjd(idf.getInfo('tStart')))
     mjd_day = int(mjd)
     mjd_sec = (mjd-mjd_day)*86400
     if config['output'] is None:
@@ -196,10 +203,12 @@ def main(args):
     print "Data Products: %s" % ','.join(dataProducts)
     print "Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile)
     print "---"
+    print "Offset: %.3f s (%i frames)" % (o, o/tInt)
+    print "---"
     
     # Create the output PSRFITS file(s)
     pfu_out = []
-    if junkFrame.containsLinearData() and config['sumPols']:
+    if isLinear and config['sumPols']:
         polNames = 'I'
         nPols = 1
         def reduceEngine(x):
@@ -295,9 +304,10 @@ def main(args):
     # Speed things along, the data need to be processed in units of 'nsblk'.  
     # Find out how many frames that corresponds to.
     chunkSize = nsblk
+    chunkTime = tInt*nsblk
     
     # Calculate the SK limites for weighting
-    if config['useSK'] and junkFrame.containsLinearData():
+    if config['useSK'] and isLinear:
         skN = int(tInt*srate / LFFT)
         skLimits = kurtosis.getLimits(4.0, M=1.0*nsblk, N=1.0*skN)
         
@@ -321,35 +331,15 @@ def main(args):
     siCount = 0
     while True:
         ## Read in the data
-        data = numpy.zeros((2*len(dataProducts), LFFT*chunkSize), dtype=numpy.float64)
-        
-        for i in xrange(chunkSize):
-            try:
-                frame = drspec.readFrame(fh)
-            except errors.eofError, errors.syncError:
-                done = True
-                break
-                
-            try:
-                if frame.getTime() > oTime + 1.001*tInt:
-                    print 'Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, frame.getTime(), oTime, tInt)
-            except NameError:
-                pass
-            oTime = frame.getTime()
-            
-            j = 0
-            for t in (1,2):
-                for p in dataProducts:
-                    data[j, i*LFFT:(i+1)*LFFT] = getattr(frame.data, "%s%i" % (p, t-1), None)
-                    j += 1
-        siCount += 1
-        
-        ## Are we done yet?
-        if done:
+        try:
+            readT, t, data = idf.read(chunkTime)
+            siCount += 1
+        except errors.eofError:
             break
             
-        ## FFT
-        spectra = data
+        ## FFT (really promote and reshape since the data are already spectra)
+        spectra = data.astype(numpy.float64)
+        spectra = spectra.reshape(spectra.shape[0], -1)
         
         ## S-K flagging
         flag = GenerateMask(spectra)
