@@ -163,10 +163,6 @@ def main(args):
         
     # Open
     idf = DRSpecFile(config['args'][0])
-    o = 0
-    if config['offset'] != 0.0:
-        o = idf.offset(config['offset'])
-        
     nFramesFile = idf.getInfo('nFrames')
     LFFT = idf.getInfo('LFFT')
     
@@ -178,6 +174,11 @@ def main(args):
     dataProducts = idf.getInfo('dataProducts')
     isLinear = ('XX' in dataProducts) or ('YY' in dataProducts)
     tInt = idf.getInfo('tInt')
+    
+    # Offset, if needed
+    o = 0
+    if config['offset'] != 0.0:
+        o = idf.offset(config['offset'])
     nFramesFile -= int(round(o/tInt))
     
     # Sub-integration block size
