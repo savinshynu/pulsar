@@ -189,19 +189,16 @@ def reader(idf, chunkTime, outQueue, core=None, verbose=True):
                 readT, t, rawdata = idf.read(chunkTime)
                 siCount += 1
             except errors.eofError:
+                done = True
                 break
                 
             ## Add it to the queue
             outQueue.append( (siCount,t,rawdata) )
             
-            ## Are we done yet?
-            if done:
-                break
-                
     except Exception as e:
         print "Reader Error: %s" % str(e)
         
-    outQueue.append(None)
+    outQueue.append( (None,done) )
 
 
 def getFromQueue(queueName):
@@ -409,7 +406,7 @@ def main(args):
     
     # Main Loop
     incoming = getFromQueue(readerQ)
-    while incoming is not None:
+    while incoming[0] is not None:
         ## Unpack
         siCount, t, rawdata = incoming
         
@@ -483,8 +480,10 @@ def main(args):
         
     rdr.join()
     
-    # Update the progress bar with the total time used
-    pbar.amount = pbar.max
+    # Update the progress bar with the total time used but only if we have
+    # reached the end of the file
+    if incoming[1]:
+        pbar.amount = pbar.max
     sys.stdout.write('              %s %2i\n' % (pbar.show(), len(readerQ)))
     sys.stdout.flush()
 
