@@ -181,14 +181,16 @@ def resolveTarget(name):
     return raS, decS, serviceS
 
 
-def reader(idf, chunkTime, outQueue, core=None):
+def reader(idf, chunkTime, outQueue, core=None, verbose=True):
     # Setup
     done = False
     siCount = 0
     
     if core is not None:
-        print 'Binding reader to core %i -> %s' % (core, BindToCore(core))
-        
+        cstatus = BindToCore(core)
+        if verbose:
+            print 'Binding reader to core %i -> %s' % (core, cstatus)
+            
     try:
         while True:
             while len(outQueue) >= MAX_QUEUE_DEPTH:
