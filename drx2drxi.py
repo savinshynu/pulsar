@@ -217,8 +217,7 @@ def main(args):
     
     # Open the file
     idf = DRXFile(config['args'][0])
-    config['offset'] = idf.offset(config['offset'])
-
+    
     # Load in basic information about the data
     nFramesFile = idf.getInfo('nFrames')
     srate = idf.getInfo('sampleRate')
@@ -226,6 +225,9 @@ def main(args):
     beam = idf.getInfo('beam')
     beampols = idf.getInfo('beampols')
     tunepol = beampols
+    
+    # Offset, if needed
+    config['offset'] = idf.offset(config['offset'])
     nFramesFile -= int(config['offset']*srate/4096)*tunepol
     
     ## Date
