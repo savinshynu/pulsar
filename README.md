@@ -57,8 +57,8 @@ plotSinglePulse.py
 ------------------
 Graphical interface for working with .singlepulse search results from PRESTO.
 
-psr.c
------
+dedispersion.c/fft.c/kurtosis.c/psr.c/quantize.c/reduce.c/utils.c
+-----------------------------------------------------------------
 Compiled Python/NumPy extension used by the scripts to speed up processing.
 
 helper.c
