@@ -216,7 +216,7 @@ def main(args):
             f = hdfData.createNewFile(outname)
             hdfData.fillMinimum(f, 1, beam, srate)
             for t in (1, 2):
-                hdfData.createDataSets(f, 1, t, numpy.arange(LFFT, dtype=numpy.float32), dur*nSubs, dataProducts)
+                hdfData.createDataSets(f, 1, t, numpy.arange(LFFT, dtype=numpy.float64), dur*nSubs, dataProducts)
             f.attrs['FileGenerator'] = 'writeHDF5FromPsrfits.py'
             f.attrs['InputData'] = os.path.basename(filename)
             
