@@ -143,25 +143,19 @@ def parseOptions(args):
 
 def resolveTarget(name):
     import urllib
+    from xml.etree import ElementTree
     
     try:
-        result = urllib.urlopen('http://www3.cadc-ccda.hia-iha.nrc-cnrc.gc.ca/NameResolver/find?target=%s' % urllib.quote_plus(name))
+        result = urllib.urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % urllib.quote_plus(name))
+        tree = ElementTree.fromstring(result.read())
+        target = tree.find('Target')
+        service = target.find('Resolver')
+        coords = service.find('jpos')
         
-        line = result.readlines()
-        target = (line[0].replace('\n', '').split('='))[1]
-        service = (line[1].replace('\n', '').split('='))[1]
-        service = service.replace('(', ' @ ')
-        coordsys = (line[2].replace('\n', '').split('='))[1]
-        ra = (line[3].replace('\n', '').split('='))[1]
-        dec = (line[4].replace('\n', '').split('='))[1]
+        serviceS = service.attrib['name'].split('=', 1)[1]
+        raS, decS = coords.text.split(None, 1)
         
-        temp = astro.deg_to_hms(float(ra))
-        raS = "%i:%02i:%05.2f" % (temp.hours, temp.minutes, temp.seconds)
-        temp = astro.deg_to_dms(float(dec))
-        decS = "%+i:%02i:%04.1f" % ((-1.0 if temp.neg else 1.0)*temp.degrees, temp.minutes, temp.seconds)
-        serviceS = service[0:-2]
-        
-    except (IOError, ValueError):
+    except (IOError, ValueError, RuntimeError):
         raS = "---"
         decS = "---"
         serviceS = "Error"
