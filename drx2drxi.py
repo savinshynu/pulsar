@@ -14,7 +14,7 @@ import sys
 import copy
 import ephem
 import struct
-import getopt
+import argparse
 from datetime import datetime
 from collections import deque
 
@@ -23,57 +23,7 @@ from lsl.reader import drx, errors, buffer
 from lsl import astro
 from lsl.common import progress
 from lsl.common.dp import fS
-
-
-def usage(exitCode=None):
-    print """drx2drxi.py - Convert a DRX file into two polarization-interleaved DRX 
-files, one for each tuning.
-
-Usage: drx2drxi.py [OPTIONS] file
-
-Options:
--h, --help             Display this help information
--c, --count            Number of seconds to keep
--o, --offset           Number of seconds to skip before splitting
-"""
-    
-    if exitCode is not None:
-        sys.exit(exitCode)
-    else:
-        return True
-
-
-def parseConfig(args):
-    config = {}
-    # Command line flags - default values
-    config['offset'] = 0
-    config['count'] = 0
-    config['date'] = False
-    
-    # Read in and process the command line flags
-    try:
-        opts, arg = getopt.getopt(args, "hc:o:", ["help", "count=", "offset="])
-    except getopt.GetoptError, err:
-        # Print help information and exit:
-        print str(err) # will print something like "option -a not recognized"
-        usage(exitCode=2)
-        
-    # Work through opts
-    for opt, value in opts:
-        if opt in ('-h', '--help'):
-            usage(exitCode=0)
-        elif opt in ('-c', '--count'):
-            config['count'] = float(value)
-        elif opt in ('-o', '--offset'):
-            config['offset'] = float(value)
-        else:
-            assert False
-            
-    # Add in arguments
-    config['args'] = arg
-    
-    # Return configuration
-    return config
+from lsl.misc import parser as aph
 
 
 class RawDRXFrame(object):
@@ -213,10 +163,8 @@ class RawDRXFrameBuffer(buffer.FrameBuffer):
 
 
 def main(args):
-    config = parseConfig(args)
-    
     # Open the file
-    idf = DRXFile(config['args'][0])
+    idf = DRXFile(args.filename)
     
     # Load in basic information about the data
     nFramesFile = idf.getInfo('nFrames')
@@ -227,8 +175,8 @@ def main(args):
     tunepol = beampols
     
     # Offset, if needed
-    config['offset'] = idf.offset(config['offset'])
-    nFramesFile -= int(config['offset']*srate/4096)*tunepol
+    args.offset = idf.offset(args.offset)
+    nFramesFile -= int(args.offset*srate/4096)*tunepol
     
     ## Date
     beginDate = ephem.Date(astro.unix_to_utcjd(idf.getInfo('tStart')) - astro.DJD_OFFSET)
@@ -243,24 +191,24 @@ def main(args):
     beam = idf.getInfo('beam')
     
     # File summary
-    print "Input Filename: %s" % config['args'][0]
+    print "Input Filename: %s" % args.filename
     print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
     print "Tune/Pols: %i" % tunepol
     print "Tunings: %.1f Hz, %.1f Hz" % (centralFreq1, centralFreq2)
     print "Sample Rate: %i Hz" % srate
     print "Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol)
     
-    if config['count'] > 0:
-        nCaptures = int(config['count'] * srate / 4096)
+    if args.count > 0:
+        nCaptures = int(args.count * srate / 4096)
     else:
         nCaptures = nFramesFile/beampols
-        config['count'] = nCaptures * 4096 / srate
-    nSkip = int(config['offset'] * srate / 4096 )
+        args.count = nCaptures * 4096 / srate
+    nSkip = int(args.offset * srate / 4096 )
     
-    print "Seconds to Skip:  %.2f (%i captures)" % (config['offset'], nSkip)
-    print "Seconds to Split: %.2f (%i captures)" % (config['count'], nCaptures)
+    print "Seconds to Skip:  %.2f (%i captures)" % (args.offset, nSkip)
+    print "Seconds to Split: %.2f (%i captures)" % (args.count, nCaptures)
     
-    outname = os.path.basename(config['args'][0])
+    outname = os.path.basename(args.filename)
     outname = os.path.splitext(outname)[0]
     print "Writing %.2f s to file '%s_b%it[12].dat'" % (nCaptures*4096/srate, outname, beam)
     
@@ -416,4 +364,16 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    parser = argparse.ArgumentParser(
+        description='convert a DRX file into two polarization-interleaved DRX files, one for each tuning', 
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        )
+    parser.add_argument('filename', type=str, 
+                        help='filename to process')
+    parser.add_argument('-c', '--count', type=aph.positive_or_zero_float, default=0.0, 
+                        help='number of seconds to keep')
+    parser.add_argument('-o', '--offset', type=aph.positive_or_zero_float, default=0.0, 
+                        help='number of seconds to skip before splitting')
+    args = parser.parse_args()
+    main(args)
+    

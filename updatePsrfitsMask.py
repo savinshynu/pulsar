@@ -4,91 +4,33 @@
 import os
 import sys
 import numpy
-import getopt
 import pyfits
+import argparse
 
 import lsl.common.progress as progress
 from lsl.statistics import robust, kurtosis
-
-
-def usage(exitCode=None):
-    print """updatePsrfitsMask.py - Read in a PSRFITS file and update the mask to exclude
-frequencies and/or time windows using a frequency mask and (pseudo) spectral 
-kurtosis.
-
-Usage: updatePsrfitsMask.py [OPTIONS] file
-
-Options:
--h, --help                Display this help information
--s, --sk-sigma            (p)SK masking limit in sigma (default = 4)
--f, --frequencies         Comma seperated list of frequency to mask in MHz
--d, --duration            (p)SK update interval (default = 10 s)
--r, --replace             Replace the current weight mask rather than 
-                        augment it (default = augment)
-"""
-    
-    if exitCode is not None:
-        sys.exit(exitCode)
-    else:
-        return True
-
-
-def parseOptions(args):
-    config = {}
-    # Command line flags - default values
-    config['skSigma'] = 4.0
-    config['duration'] = 10.0
-    config['frequencies'] = []
-    config['replace'] = False
-    config['args'] = []
-    
-    # Read in and process the command line flags
-    try:
-        opts, args = getopt.getopt(args, "hs:d:f:r", ["help", "sk-sigma=", "duration=", "frequencies=", "replace"])
-    except getopt.GetoptError, err:
-        # Print help information and exit:
-        print str(err) # will print something like "option -a not recognized"
-        usage(exitCode=2)
-        
-    # Work through opts
-    for opt, value in opts:
-        if opt in ('-h', '--help'):
-            usage(exitCode=0)
-        elif opt in ('-s', '--sk-sigma'):
-            config['skSigma'] = float(value)
-        elif opt in ('-d', '--duration'):
-            config['duration'] = float(value)
-        elif opt in ('-f', '--frequencies'):
-            values = value.split(',')
-            for v in values:
-                if v.find('-') == -1:
-                    config['frequencies'].append( float(v) )
-                else:
-                    v1, v2 = [float(vs) for vs in v.split('-', 1)]
-                    v = v1
-                    while v <= v2:
-                        config['frequencies'].append( v )
-                        v += 0.1
-                    config['frequencies'].append( v2 )
-                    
-        elif opt in ('-r', '--replace'):
-            config['replace'] = True
-        else:
-            assert False
-            
-    # Add in arguments
-    config['args'] = args
-    
-    # Return configuration
-    return config
+from lsl.misc import parser as aph
 
 
 def main(args):
-    config = parseOptions(args)
-    
-    filenames = config['args']
-    
-    for filename in filenames:
+    # Parse the command line
+    if args.frequencies is not None:
+        args.frequencies = []
+        values = value.split(',')
+        for v in values:
+            if v.find('-') == -1:
+                args.frequencies.append( float(v) )
+            else:
+                v1, v2 = [float(vs) for vs in v.split('-', 1)]
+                v = v1
+                while v <= v2:
+                    args.frequencies.append( v )
+                    v += 0.1
+                args.frequencies.append( v2 )
+    else:
+        args.frequencies = []
+        
+    for filename in args.filename:
         print "Working on '%s'..." % os.path.basename(filename)
         
         # Open the PRSFITS file
@@ -99,7 +41,7 @@ def main(args):
         nPol = hdulist[1].header['NPOL']
         nSubs = hdulist[1].header['NSBLK']
         tInt = hdulist[1].data[0][0]
-        nSubsChunk = int( numpy.ceil( config['duration']/tInt ) )
+        nSubsChunk = int( numpy.ceil( args.duration/tInt ) )
         print "  Polarizations: %i" % nPol
         print "  Sub-integration time: %.3f ms" % (tInt/nSubs*1000.0,)
         print "  Sub-integrations per block: %i" % nSubs
@@ -113,7 +55,7 @@ def main(args):
         skN = srate / LFFT * (tInt / nSubs)
         if nPol == 1:
             skN *= 2
-        skLimits = kurtosis.getLimits(config['skSigma'], skM, N=1.0*skN)
+        skLimits = kurtosis.getLimits(args.sk_sigma, skM, N=1.0*skN)
         print "  (p)SK M: %i" % (nSubsChunk*nSubs,)
         print "  (p)SK N: %i" % skN
         print "  (p)SK Limits: %.4f <= valid <= %.4f" % skLimits
@@ -121,7 +63,7 @@ def main(args):
         # Figure out what to mask for the specified frequencies and report
         toMask = []
         freq = hdulist[1].data[0][12]
-        for f in config['frequencies']:
+        for f in args.frequencies:
             metric = numpy.abs( freq - f )
             toMaskCurrent = numpy.where( metric <= 0.05 )[0]
             toMask.extend( list(toMaskCurrent) )
@@ -191,7 +133,7 @@ def main(args):
             for c in toMask:
                 newMask[c] *= 0.0
                 
-            if config['replace']:
+            if args.replace:
                 ## Replace the existing mask
                 blockMask = newMask
             else:
@@ -220,5 +162,20 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    parser = argparse.ArgumentParser(
+        description='read in a PSRFITS file and update the mask to exclude frequencies and/or time windows using a frequency mask and (pseudo) spectral kurtosis', 
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        )
+    parser.add_argument('filename', type=str, nargs='+', 
+                        help='filename to update')
+    parser.add_argument('-s', '--sk-sigma', type=aph.positive_float, default=4.0, 
+                        help='(p)SK masking limit in sigma')
+    parser.add_argument('-f', '--frequencies', type=str, 
+                        help='comma seperated list of frequency to mask in MHz')
+    parser.add_argument('-d', '--duration', type=aph.positive_float, default=10.0, 
+                        help='(p)SK update interval in seconds')
+    parser.add_argument('-r', '--replace', action='store_true', 
+                        help='replace the current weight mask rather than augment it')
+    args = parser.parse_args()
+    main(args)
     

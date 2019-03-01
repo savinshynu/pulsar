@@ -14,7 +14,7 @@ import sys
 import numpy
 import ephem
 import ctypes
-import getopt
+import argparse
 
 import psrfits_utils.psrfits_utils as pfu
 
@@ -23,90 +23,9 @@ from lsl.reader import errors
 import lsl.astro as astro
 import lsl.common.progress as progress
 from lsl.statistics import robust, kurtosis
+from lsl.misc import parser as aph
 
 from _psr import *
-
-
-def usage(exitCode=None):
-    print """writePrsfits2FromDRSpec.py - Read in DR spectrometer files and create one or 
-more PSRFITS file(s).
-
-Usage: writePsrfits2FromDRSpec.py [OPTIONS] file
-
-Options:
--h, --help                  Display this help information
--j, --skip                  Skip the specified number of seconds at the 
-                            beginning of the file (default = 0)
--o, --output                Output file basename
--p, --no-sk-flagging        Disable on-the-fly SK flagging of RFI
--n, --no-summing            Do not sum polarizations for XX and YY files
--s, --source                Source name
--r, --ra                    Right Ascension (HH:MM:SS.SS, J2000)
--d, --dec                   Declination (sDD:MM:SS.S, J2000)
--4, --4bit-data             Save the spectra in 4-bit mode (default = 8-bit)
-
-Note:  If a source name is provided and the RA or declination is not, the script
-    will attempt to determine these values.
-    
-Note:  Stokes-mode data will disable summing
-"""
-
-    if exitCode is not None:
-        sys.exit(exitCode)
-    else:
-        return True
-
-
-def parseOptions(args):
-    config = {}
-    # Command line flags - default values
-    config['offset'] = 0.0
-    config['output'] = None
-    config['args'] = []
-    config['nsblk'] = 32
-    config['useSK'] = True
-    config['sumPols'] = True
-    config['source'] = None
-    config['ra'] = None
-    config['dec'] = None
-    config['dataBits'] = 8
-    
-    # Read in and process the command line flags
-    try:
-        opts, args = getopt.getopt(args, "hj:pns:o:r:d:4", ["help", "skip=", "no-sk-flagging", "no-summing", "source=", "output=", "ra=", "dec=", "4bit-mode"])
-    except getopt.GetoptError, err:
-        # Print help information and exit:
-        print str(err) # will print something like "option -a not recognized"
-        usage(exitCode=2)
-        
-    # Work through opts
-    for opt, value in opts:
-        if opt in ('-h', '--help'):
-            usage(exitCode=0)
-        elif opt in ('-j', '--skip'):
-            config['offset'] = float(value)
-        elif opt in ('-p', '--no-sk-flagging'):
-            config['useSK'] = False
-        elif opt in ('-n', '--no-summing'):
-            config['sumPols'] = False
-        elif opt in ('-s', '--source'):
-            config['source'] = value
-        elif opt in ('-r', '--ra'):
-            config['ra'] = value
-        elif opt in ('-d', '--dec'):
-            config['dec'] = value
-        elif opt in ('-o', '--output'):
-            config['output'] = value
-        elif opt in ('-4', '--4bit-mode'):
-            config['dataBits'] = 4
-        else:
-            assert False
-            
-    # Add in arguments
-    config['args'] = args
-    
-    # Return configuration
-    return config
 
 
 def resolveTarget(name):
@@ -136,24 +55,24 @@ def main(args):
     config = parseOptions(args)
     
     # Find out where the source is if needed
-    if config['source'] is not None:
-        if config['ra'] is None or config['dec'] is None:
-            tempRA, tempDec, tempService = resolveTarget('PSR '+config['source'])
-            print "%s resolved to %s, %s using '%s'" % (config['source'], tempRA, tempDec, tempService)
+    if args.source is not None:
+        if args.ra is None or args.dec is None:
+            tempRA, tempDec, tempService = resolveTarget('PSR '+args.source)
+            print "%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService)
             out = raw_input('=> Accept? [Y/n] ')
             if out == 'n' or out == 'N':
                 sys.exit()
             else:
-                config['ra'] = tempRA
-                config['dec'] = tempDec
+                args.ra = tempRA
+                args.dec = tempDec
                 
     else:
-        config['source'] = "None"
+        args.source = "None"
         
-    if config['ra'] is None:
-        config['ra'] = "00:00:00.00"
-    if config['dec'] is None:
-        config['dec'] = "+00:00:00.0"
+    if args.ra is None:
+        args.ra = "00:00:00.00"
+    if args.dec is None:
+        args.dec = "+00:00:00.0"
         
     # Open
     idf = DRSpecFile(config['args'][0])
@@ -171,12 +90,12 @@ def main(args):
     
     # Offset, if needed
     o = 0
-    if config['offset'] != 0.0:
-        o = idf.offset(config['offset'])
+    if args.offset != 0.0:
+        o = idf.offset(args.offset)
     nFramesFile -= int(round(o/tInt))
     
     # Sub-integration block size
-    nsblk = config['nsblk']
+    nsblk = 32
     
     ## Date
     beginDate = ephem.Date(astro.unix_to_utcjd(idf.getInfo('tStart')) - astro.DJD_OFFSET)
@@ -184,8 +103,8 @@ def main(args):
     mjd = astro.jd_to_mjd(astro.unix_to_utcjd(idf.getInfo('tStart')))
     mjd_day = int(mjd)
     mjd_sec = (mjd-mjd_day)*86400
-    if config['output'] is None:
-        config['output'] = "drx_%05d_%s" % (mjd_day, config['source'].replace(' ', ''))
+    if args.output is None:
+        args.output = "drx_%05d_%s" % (mjd_day, args.source.replace(' ', ''))
         
     # File summary
     print "Input Filename: %s" % config['args'][0]
@@ -203,7 +122,7 @@ def main(args):
     
     # Create the output PSRFITS file(s)
     pfu_out = []
-    if isLinear and config['sumPols']:
+    if isLinear and (not args.no_summing):
         polNames = 'I'
         nPols = 1
         def reduceEngine(x):
@@ -214,12 +133,12 @@ def main(args):
             y[1,:] += x[3,:]
             return y
     else:
-        config['sumPols'] = False
+        args.no_summing = True
         polNames = ''.join(dataProducts)
         nPols = len(dataProducts)
         reduceEngine = lambda x: x.astype(numpy.float32)
         
-    if config['dataBits'] == 4:
+    if args.four_bit_data:
         OptimizeDataLevels = OptimizeDataLevels4Bit
     else:
         OptimizeDataLevels = OptimizeDataLevels8Bit
@@ -227,7 +146,7 @@ def main(args):
     for t in xrange(1, 2+1):
         ## Basic structure and bounds
         pfo = pfu.psrfits()
-        pfo.basefilename = "%s_b%it%i" % (config['output'], beam, t)
+        pfo.basefilename = "%s_b%it%i" % (args.output, beam, t)
         pfo.filenum = 0
         pfo.tot_rows = pfo.N = pfo.T = pfo.status = pfo.multifile = 0
         pfo.rows_per_file = 32768
@@ -244,21 +163,21 @@ def main(args):
         
         ## Metadata about the observation/observatory/pulsar
         pfo.hdr.observer = "wP2FromDRSpec.py"
-        pfo.hdr.source = config['source']
+        pfo.hdr.source = args.source
         pfo.hdr.fd_hand = 1
-        pfo.hdr.nbits = config['dataBits']
+        pfo.hdr.nbits = 4 if args.four_bit_data else 8
         pfo.hdr.nsblk = nsblk
         pfo.hdr.ds_freq_fact = 1
         pfo.hdr.ds_time_fact = 1
         pfo.hdr.npol = nPols
-        pfo.hdr.summed_polns = 1 if config['sumPols'] else 0
+        pfo.hdr.summed_polns = 1 if (not args.no_summing) else 0
         pfo.hdr.obs_mode = "SEARCH"
         pfo.hdr.telescope = "LWA"
         pfo.hdr.frontend = "LWA"
         pfo.hdr.backend = "DRSpectrometer"
         pfo.hdr.project_id = "Pulsar"
-        pfo.hdr.ra_str = config['ra']
-        pfo.hdr.dec_str = config['dec']
+        pfo.hdr.ra_str = args.ra
+        pfo.hdr.dec_str = args.dec
         pfo.hdr.poln_type = "LIN"
         pfo.hdr.poln_order = polNames
         pfo.hdr.date_obs = str(beginTime.strftime("%Y-%m-%dT%H:%M:%S"))     
@@ -271,7 +190,7 @@ def main(args):
         pfo.sub.dat_weights = pfu.malloc_floatp(pfo.hdr.nchan*4)				# 4-bytes per float @ LFFT channels
         pfo.sub.dat_offsets = pfu.malloc_floatp(pfo.hdr.nchan*pfo.hdr.npol*4)		# 4-bytes per float @ LFFT channels per pol.
         pfo.sub.dat_scales  = pfu.malloc_floatp(pfo.hdr.nchan*pfo.hdr.npol*4)		# 4-bytes per float @ LFFT channels per pol.
-        if config['dataBits'] == 4:
+        if args.four_bit_data:
             pfo.sub.data = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk)	# 1-byte per unsigned char @ (LFFT channels x pols. x nsblk sub-integrations) samples
             pfo.sub.rawdata = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk/2)	# 4-bits per nibble @ (LFFT channels x pols. x nsblk sub-integrations) samples
         else:
@@ -302,7 +221,7 @@ def main(args):
     chunkTime = tInt*nsblk
     
     # Calculate the SK limites for weighting
-    if config['useSK'] and isLinear:
+    if (not args.no_sk_flagging) and isLinear:
         skN = int(tInt*srate / LFFT)
         skLimits = kurtosis.getLimits(4.0, M=1.0*nsblk, N=1.0*skN)
         
@@ -364,7 +283,7 @@ def main(args):
             
             ## Data
             ptr, junk = sp.__array_interface__['data']
-            if config['dataBits'] == 4:
+            if args.four_bit_data:
                 ctypes.memmove(int(pfu_out[j].sub.data), ptr, pfu_out[j].hdr.nchan*nPols*pfu_out[j].hdr.nsblk)
             else:
                 ctypes.memmove(int(pfu_out[j].sub.rawdata), ptr, pfu_out[j].hdr.nchan*nPols*pfu_out[j].hdr.nsblk)
@@ -395,5 +314,29 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    parser = argparse.ArgumentParser(
+        description='read in DR spectrometer files and create one or more PSRFITS file(s)', 
+        epilog='NOTE:  If a source name is provided and the RA or declination is not, the script will attempt to determine these values.', 
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        )
+    parser.add_argument('filename', type=str, 
+                        help='filename to process')
+    parser.add_argument('-j', '--skip', type=aph.positive_or_zero_float, default=0.0, 
+                        help='skip the specified number of seconds at the beginning of the file')
+    parser.add_argument('-o', '--output', type=str, 
+                        help='output file basename')
+    parser.add_argument('-p', '--no-sk-flagging', action='store_true', 
+                        help='disable on-the-fly SK flagging of RFI')
+    parser.add_argument('-n', '--no-summing', action='store_true', 
+                        help='do not sum linear polarizations')
+    parser.add_argument('-s', '--source', type=str, 
+                        help='source name')
+    parser.add_argument('-r', '--ra', type=aph.hours, 
+                        help='right ascension; HH:MM:SS.SS, J2000')
+    parser.add_argument('-d', '--dec', type=aph.degrees, 
+                        help='declination; sDD:MM:SS.S, J2000')
+    parser.add_argument('-4', '--four-bit-data', action='store_true', 
+                        help='save the spectra in 4-bit mode instead of 8-bit mode')
+    args = parser.parse_args()
+    main(args)
     

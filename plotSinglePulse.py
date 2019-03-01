@@ -15,8 +15,8 @@ import math
 import time
 import numpy
 import ephem
-import getopt
 import pyfits
+import argparse
 import subprocess
 from datetime import datetime
 from multiprocessing import Pool
@@ -31,6 +31,7 @@ import lsl
 from lsl import astro
 from lsl.misc.dedispersion import _D, delay, incoherent
 from lsl.misc.mathutil import to_dB, from_dB, savitzky_golay
+from lsl.misc import parser as aph
 
 import wx
 import wx.html
@@ -85,12 +86,12 @@ Options:
 def parseOptions(args):
     config = {}
     # Command line flags - default values
-    config['threshold'] = 5.0
-    config['timeRange'] = [0, numpy.inf]
-    config['dmRange'] = [0, numpy.inf]
-    config['widthRange'] = [0, numpy.inf]
-    config['fitsname'] = None
-    config['args'] = []
+    args.threshold = 5.0
+    args.time_range = [0, numpy.inf]
+    args.dm_range = [0, numpy.inf]
+    args.width_range = [0, numpy.inf]
+    args.fitsname = None
+    args.filename = []
     
     # Read in and process the command line flags
     try:
@@ -105,47 +106,47 @@ def parseOptions(args):
         if opt in ('-h', '--help'):
             usage(exitCode=0)
         elif opt in ('-t', '--threshold'):
-            config['threshold'] = float(value)
+            args.threshold = float(value)
         elif opt in ('-r', '--time-range'):
             values = [float(v) for v in value.split(',')]
-            config['timeRange'] = values
+            args.time_range = values
         elif opt in ('-d', '--dm-range'):
             values = [float(v) for v in value.split(',')]
-            config['dmRange'] = values
+            args.dm_range = values
         elif opt in ('-w', '--width-range'):
             values = [float(v) for v in value.split(',')]
-            config['widthRange'] = values
+            args.width_range = values
         elif opt in ('-f', '--fitsname'):
-            config['fitsname'] = value
+            args.fitsname = value
         else:
             assert False
             
     
     # Validate
-    if config['threshold'] <= 0:
-        raise RuntimeError("Invalid threshold '%.1f'" % config['threshold'])
+    if args.threshold <= 0:
+        raise RuntimeError("Invalid threshold '%.1f'" % args.threshold)
         
-    if len(config['timeRange']) != 2:
-        raise RuntimeError("Invalid time range of '%s'" % str(config['timeRange']))
-    if config['timeRange'][1] <= config['timeRange'][0]:
-        raise RuntimeError("Invalid time range of '%s'" % str(config['timeRange']))
+    if len(args.time_range) != 2:
+        raise RuntimeError("Invalid time range of '%s'" % str(args.time_range))
+    if args.time_range[1] <= args.time_range[0]:
+        raise RuntimeError("Invalid time range of '%s'" % str(args.time_range))
         
-    if len(config['dmRange']) != 2:
-        raise RuntimeError("Invalid DM range of '%s'" % str(config['dmRange']))
-    if config['dmRange'][1] <= config['dmRange'][0]:
-        raise RuntimeError("Invalid DM range of '%s'" % str(config['dmRange']))
+    if len(args.dm_range) != 2:
+        raise RuntimeError("Invalid DM range of '%s'" % str(args.dm_range))
+    if args.dm_range[1] <= args.dm_range[0]:
+        raise RuntimeError("Invalid DM range of '%s'" % str(args.dm_range))
         
-    if len(config['widthRange']) != 2:
-        raise RuntimeError("Invalid width range of '%s'" % str(config['widthRange']))
-    if config['widthRange'][1] <= config['widthRange'][0]:
-        raise RuntimeError("Invalid width range of '%s'" % str(config['widthRange']))
+    if len(args.width_range) != 2:
+        raise RuntimeError("Invalid width range of '%s'" % str(args.width_range))
+    if args.width_range[1] <= args.width_range[0]:
+        raise RuntimeError("Invalid width range of '%s'" % str(args.width_range))
         
-    if config['fitsname'] is not None:
-        if not os.path.exists(config['fitsname']):
-            raise RuntimeError("FITS file '%s' does not exist" % os.path.basename(config['fitsname']))
+    if args.fitsname is not None:
+        if not os.path.exists(args.fitsname):
+            raise RuntimeError("FITS file '%s' does not exist" % os.path.basename(args.fitsname))
             
     # Add in arguments
-    config['args'] = args
+    args.filename = args
     
     # Return configuration
     return config
@@ -3566,7 +3567,9 @@ def main(args):
     numpy.seterr(all='ignore', invalid='ignore', divide='ignore')
     
     # Parse the command line options
-    config = parseOptions(args)
+    args.time_range  = [float(v) for v in args.time_range.split(',') ]
+    args.dm_range    = [float(v) for v in args.dm_range.split(',')   ]
+    args.width_range = [float(v) for v in args.width_range.split(',')]
     
     # Check for the _helper module
     try:
@@ -3579,10 +3582,10 @@ def main(args):
     frame = MainWindow(None, -1)
     frame.data = SinglePulse_GUI(frame)
     frame.render()
-    if len(config['args']) >= 1:
+    if args.filename is not None:
         ## If there is a filename on the command line, load it
-        frame.filenames = config['args']
-        frame.data.loadData(config['args'], threshold=config['threshold'], timeRange=config['timeRange'], dmRange=config['dmRange'], widthRange=config['widthRange'], fitsname=config['fitsname'])
+        frame.filenames = args.filename
+        frame.data.loadData(args.filename, threshold=args.threshold, timeRange=args.time_range, dmRange=args.dm_range, widthRange=args.width_range, fitsname=args.fitsname)
         frame.data.render()
         frame.data.draw()
         
@@ -3593,5 +3596,22 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    parser = argparse.ArgumentParser(
+        description='read in a collection of .singlepulse files and plot them interactively', 
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        )
+    parser.add_argument('filename', type=str, nargs='?', 
+                        help='filename to display')
+    parser.add_argument('-t', '--threshold', type=aph.positive_float, default=5.0, 
+                        help='minimum pulsar threshold to display in sigma')
+    parser.add_argument('-r', '--time-range', type=str, default='0,inf', 
+                        help='comma separated list of the relative time range in seconds to load')
+    parser.add_argument('-d', '--dm-range', type=str, default='0,inf', 
+                        help='comma separated list of the DM range in pc cm^-3 to load')
+    parser.add_argument('-w', '--width-range', type=str, default='0,inf', 
+                        help='comma separated list of the pulse width range in ms to load')
+    parser.add_argument('-f', '--fitsname', type=str, 
+                       help='optional PSRFITS file to use for waterfall plots')
+    args = parser.parse_args()
+    main(args)
     
