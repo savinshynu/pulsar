@@ -15,8 +15,9 @@ from lsl.misc import parser as aph
 def main(args):
     # Parse the command line
     if args.frequencies is not None:
+        values = args.frequencies.split(',')
+        
         args.frequencies = []
-        values = value.split(',')
         for v in values:
             if v.find('-') == -1:
                 args.frequencies.append( float(v) )

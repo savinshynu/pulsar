@@ -51,9 +51,6 @@ def resolveTarget(name):
 
 
 def main(args):
-    # Parse command line options
-    config = parseOptions(args)
-    
     # Find out where the source is if needed
     if args.source is not None:
         if args.ra is None or args.dec is None:

@@ -205,7 +205,7 @@ def main(args):
         pfo.hdr.observer = "wP2FromHDF5.py"
         pfo.hdr.source = args.source
         pfo.hdr.fd_hand = 1
-        pfo.hdr.nbits = config['dataBits']
+        pfo.hdr.nbits = 4 if args.four_bit_data else 8
         pfo.hdr.nsblk = nsblk
         pfo.hdr.ds_freq_fact = 1
         pfo.hdr.ds_time_fact = 1

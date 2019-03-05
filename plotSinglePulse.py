@@ -59,99 +59,6 @@ else:
     AppendMenuMenu = lambda *args, **kwds: args[0].AppendMenu(*args[1:], **kwds)
 
 
-def usage(exitCode=None):
-    print """plotSinglePulse.py - Read in a collection of .singlepulse files
-and plot them interactively
-
-Usage: plotSinglePulse.py [OPTIONS] file [file [...]]
-
-Options:
--h, --help                  Display this help information
--t, --threshold             Minimum threshold to display (Default = 5.0)
--r, --time-range            Comma separated list of the relative time range in 
-                            seconds to load (Default = 0,inf)
--d, --dm-range              Comma separated list of the DM range in pc cm^-3
-                            to load (Default = 0,inf)
--w, --width-range           Comma separated list of the pulse width range in ms
-                            to load (Default = 0,inf)
--f, --fitsname              Optional PSRFITS file to use for waterfall plots
-"""
-    
-    if exitCode is not None:
-        sys.exit(exitCode)
-    else:
-        return True
-
-
-def parseOptions(args):
-    config = {}
-    # Command line flags - default values
-    args.threshold = 5.0
-    args.time_range = [0, numpy.inf]
-    args.dm_range = [0, numpy.inf]
-    args.width_range = [0, numpy.inf]
-    args.fitsname = None
-    args.filename = []
-    
-    # Read in and process the command line flags
-    try:
-        opts, args = getopt.getopt(args, "ht:r:d:w:f:", ["help", "threshold=", "time-range=", "dm-range=", "width-range=", "fitsname="])
-    except getopt.GetoptError, err:
-        # Print help information and exit:
-        print str(err) # will print something like "option -a not recognized"
-        usage(exitCode=2)
-    
-    # Work through opts
-    for opt, value in opts:
-        if opt in ('-h', '--help'):
-            usage(exitCode=0)
-        elif opt in ('-t', '--threshold'):
-            args.threshold = float(value)
-        elif opt in ('-r', '--time-range'):
-            values = [float(v) for v in value.split(',')]
-            args.time_range = values
-        elif opt in ('-d', '--dm-range'):
-            values = [float(v) for v in value.split(',')]
-            args.dm_range = values
-        elif opt in ('-w', '--width-range'):
-            values = [float(v) for v in value.split(',')]
-            args.width_range = values
-        elif opt in ('-f', '--fitsname'):
-            args.fitsname = value
-        else:
-            assert False
-            
-    
-    # Validate
-    if args.threshold <= 0:
-        raise RuntimeError("Invalid threshold '%.1f'" % args.threshold)
-        
-    if len(args.time_range) != 2:
-        raise RuntimeError("Invalid time range of '%s'" % str(args.time_range))
-    if args.time_range[1] <= args.time_range[0]:
-        raise RuntimeError("Invalid time range of '%s'" % str(args.time_range))
-        
-    if len(args.dm_range) != 2:
-        raise RuntimeError("Invalid DM range of '%s'" % str(args.dm_range))
-    if args.dm_range[1] <= args.dm_range[0]:
-        raise RuntimeError("Invalid DM range of '%s'" % str(args.dm_range))
-        
-    if len(args.width_range) != 2:
-        raise RuntimeError("Invalid width range of '%s'" % str(args.width_range))
-    if args.width_range[1] <= args.width_range[0]:
-        raise RuntimeError("Invalid width range of '%s'" % str(args.width_range))
-        
-    if args.fitsname is not None:
-        if not os.path.exists(args.fitsname):
-            raise RuntimeError("FITS file '%s' does not exist" % os.path.basename(args.fitsname))
-            
-    # Add in arguments
-    args.filename = args
-    
-    # Return configuration
-    return config
-
-
 def telescope2tempo(tel):
     """
     Simple function that provides the functionality of the PRESTO
@@ -1627,7 +1534,7 @@ class MainWindow(wx.Frame):
         if dlg.ShowModal() == wx.ID_OK:
             self.filename = dlg.GetFilename()
             self.dirname = dlg.GetDirectory()
-            self.data = Waterfall_GUI(self)
+            self.data = SinglePulse_GUI(self)
             
         dlg.Destroy()
         
