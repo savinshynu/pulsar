@@ -72,7 +72,7 @@ def main(args):
         args.dec = "+00:00:00.0"
         
     # Open
-    idf = DRSpecFile(config['args'][0])
+    idf = DRSpecFile(args.filename)
     nFramesFile = idf.getInfo('nFrames')
     LFFT = idf.getInfo('LFFT')
     
@@ -104,7 +104,7 @@ def main(args):
         args.output = "drx_%05d_%s" % (mjd_day, args.source.replace(' ', ''))
         
     # File summary
-    print "Input Filename: %s" % config['args'][0]
+    print "Input Filename: %s" % args.filename
     print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
     print "Beam: %i" % beam
     print "Tunings: %.1f Hz, %.1f Hz" % (centralFreq1, centralFreq2)
