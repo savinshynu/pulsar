@@ -70,7 +70,9 @@ def main(args):
         args.ra = "00:00:00.00"
     if args.dec is None:
         args.dec = "+00:00:00.0"
-        
+    args.ra = str(args.ra)
+    args.dec = str(args.dec)
+    
     # Open
     idf = DRSpecFile(args.filename)
     nFramesFile = idf.getInfo('nFrames')

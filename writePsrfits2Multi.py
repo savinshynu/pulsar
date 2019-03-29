@@ -126,7 +126,9 @@ def main(args):
         args.ra = "00:00:00.00"
     if args.dec is None:
         args.dec = "+00:00:00.0"
-        
+    args.ra = str(args.ra)
+    args.dec = str(args.dec)
+    
     # FFT length
     LFFT = args.nchan
     

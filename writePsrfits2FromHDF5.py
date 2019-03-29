@@ -111,7 +111,9 @@ def main(args):
         args.ra = "00:00:00.00"
     if args.dec is None:
         args.dec = "+00:00:00.0"
-        
+    args.ra = str(args.ra)
+    args.dec = str(args.dec)
+    
     ## What's in the data?
     obs1tuning1 = obs1['Tuning1']
     obs1tuning2 = obs1['Tuning2']
