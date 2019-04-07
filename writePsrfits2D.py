@@ -241,7 +241,7 @@ def main(args):
         pfo.hdr.observer = "writePsrfits2D.py"
         pfo.hdr.source = args.source
         pfo.hdr.fd_hand = 1
-        pfo.hdr.nbits = args.four_bit_data
+        pfo.hdr.nbits = 4 if args.four_bit_data else 8
         pfo.hdr.nsblk = nsblk
         pfo.hdr.ds_freq_fact = 1
         pfo.hdr.ds_time_fact = 1
