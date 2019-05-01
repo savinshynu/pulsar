@@ -17,8 +17,8 @@ import numpy
 import ephem
 import ctypes
 import argparse
+import traceback
 from datetime import datetime
-
 
 import threading
 from collections import deque
@@ -91,7 +91,9 @@ def reader(idf, chunkTime, outQueue, core=None, verbose=True):
             outQueue.append( (siCount,t,rawdata) )
             
     except Exception as e:
-        print "Reader Error: %s" % str(e)
+        lines = traceback.format_exc()
+        lines = '\x1b[2KReader Error '+lines
+        print lines,
         
     outQueue.append( (None,done) )
 
