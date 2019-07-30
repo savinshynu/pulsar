@@ -89,8 +89,8 @@ def main(args):
     
     # Offset, if needed
     o = 0
-    if args.offset != 0.0:
-        o = idf.offset(args.offset)
+    if args.skip != 0.0:
+       o = idf.offset(args.skip)
     nFramesFile -= int(round(o/tInt))
     
     # Sub-integration block size
