@@ -554,6 +554,10 @@ def main(args):
             pbar.amount = pbar.max
         sys.stdout.write('              %s %2i\n' % (pbar.show(), len(readerQ)))
         sys.stdout.flush()
+        
+        # And close out the files
+        for pfo in pfu_out:
+            pfu.psrfits_close(pfo)
 
 
 if __name__ == "__main__":

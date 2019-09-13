@@ -310,6 +310,10 @@ def main(args):
     # Update the progress bar with the total time used
     sys.stdout.write('              %s\n' % pbar.show())
     sys.stdout.flush()
+    
+    # And close out the files
+    for pfo in pfu_out:
+        pfu.psrfits_close(pfo)
 
 
 if __name__ == "__main__":
