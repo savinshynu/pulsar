@@ -85,7 +85,7 @@ class RawDRXFrameBuffer(buffer.FrameBuffer):
     list of polarizations to expect packets for
     
     nSegments
-    number of ring segments to use for the buffer (default is 10)
+    number of ring segments to use for the buffer (default is 20)
     
     ReorderFrames
     whether or not to reorder frames returned by get() or flush() by 
@@ -114,7 +114,7 @@ class RawDRXFrameBuffer(buffer.FrameBuffer):
     
     """
     
-    def __init__(self, beams=[], tunes=[1,2], pols=[0, 1], nSegments=10, ReorderFrames=False):
+    def __init__(self, beams=[], tunes=[1,2], pols=[0, 1], nSegments=20, ReorderFrames=False):
         super(RawDRXFrameBuffer, self).__init__(mode='DRX', beams=beams, tunes=tunes, pols=pols, nSegments=nSegments, ReorderFrames=ReorderFrames)
         
     def calcFrames(self):
