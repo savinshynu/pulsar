@@ -3,10 +3,6 @@
 
 """
 Given a DR spectrometer file, create one of more PSRFITS file(s).
-
-$Rev$
-$LastChangedBy$
-$LastChangedDate$
 """
 
 import os
@@ -75,17 +71,17 @@ def main(args):
     
     # Open
     idf = DRSpecFile(args.filename)
-    nFramesFile = idf.getInfo('nFrames')
-    LFFT = idf.getInfo('LFFT')
+    nFramesFile = idf.get_info('nFrames')
+    LFFT = idf.get_info('LFFT')
     
     # Load in basic information about the data
-    srate = idf.getInfo('sampleRate')
-    beam = idf.getInfo('beam')
-    centralFreq1 = idf.getInfo('freq1')
-    centralFreq2 = idf.getInfo('freq2')
-    dataProducts = idf.getInfo('dataProducts')
-    isLinear = ('XX' in dataProducts) or ('YY' in dataProducts)
-    tInt = idf.getInfo('tInt')
+    srate = idf.get_info('sample_rate')
+    beam = idf.get_info('beam')
+    central_freq1 = idf.get_info('freq1')
+    central_freq2 = idf.get_info('freq2')
+    data_products = idf.get_info('data_products')
+    isLinear = ('XX' in data_products) or ('YY' in data_products)
+    tInt = idf.get_info('tInt')
     
     # Offset, if needed
     o = 0
@@ -97,9 +93,9 @@ def main(args):
     nsblk = 32
     
     ## Date
-    beginDate = ephem.Date(astro.unix_to_utcjd(idf.getInfo('tStart')) - astro.DJD_OFFSET)
+    beginDate = ephem.Date(astro.unix_to_utcjd(idf.get_info('tStart')) - astro.DJD_OFFSET)
     beginTime = beginDate.datetime()
-    mjd = astro.jd_to_mjd(astro.unix_to_utcjd(idf.getInfo('tStart')))
+    mjd = astro.jd_to_mjd(astro.unix_to_utcjd(idf.get_info('tStart')))
     mjd_day = int(mjd)
     mjd_sec = (mjd-mjd_day)*86400
     if args.output is None:
@@ -109,11 +105,11 @@ def main(args):
     print "Input Filename: %s" % args.filename
     print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
     print "Beam: %i" % beam
-    print "Tunings: %.1f Hz, %.1f Hz" % (centralFreq1, centralFreq2)
+    print "Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2)
     print "Sample Rate: %i Hz" % srate
     print "Sample Time: %f s" % tInt
     print "Sub-block Time: %f s" % (tInt*nsblk,)
-    print "Data Products: %s" % ','.join(dataProducts)
+    print "Data Products: %s" % ','.join(data_products)
     print "Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile)
     print "---"
     print "Offset: %.3f s (%i frames)" % (o, o/tInt)
@@ -133,8 +129,8 @@ def main(args):
             return y
     else:
         args.no_summing = True
-        polNames = ''.join(dataProducts)
-        nPols = len(dataProducts)
+        polNames = ''.join(data_products)
+        nPols = len(data_products)
         reduceEngine = lambda x: x.astype(numpy.float32)
         
     if args.four_bit_data:
@@ -152,9 +148,9 @@ def main(args):
         
         ## Frequency, bandwidth, and channels
         if t == 1:
-            pfo.hdr.fctr=centralFreq1/1e6
+            pfo.hdr.fctr=central_freq1/1e6
         else:
-            pfo.hdr.fctr=centralFreq2/1e6
+            pfo.hdr.fctr=central_freq2/1e6
         pfo.hdr.BW = srate/1e6
         pfo.hdr.nchan = LFFT
         pfo.hdr.df = srate/1e6/LFFT
@@ -222,7 +218,7 @@ def main(args):
     # Calculate the SK limites for weighting
     if (not args.no_sk_flagging) and isLinear:
         skN = int(tInt*srate / LFFT)
-        skLimits = kurtosis.getLimits(4.0, M=1.0*nsblk, N=1.0*skN)
+        skLimits = kurtosis.get_limits(4.0, M=1.0*nsblk, N=1.0*skN)
         
         GenerateMask = lambda x: ComputePseudoSKMask(x, LFFT, skN, skLimits[0], skLimits[1])
     else:
@@ -247,7 +243,7 @@ def main(args):
         try:
             readT, t, data = idf.read(chunkTime)
             siCount += 1
-        except errors.eofError:
+        except errors.EOFError:
             break
             
         ## FFT (really promote and reshape since the data are already spectra)

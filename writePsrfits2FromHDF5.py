@@ -3,10 +3,6 @@
 
 """
 Given an HDF5 file from drspec2hdf.py, create one of more PSRFITS file(s).
-
-$Rev$
-$LastChangedBy$
-$LastChangedDate$
 """
 
 import os
@@ -119,21 +115,21 @@ def main(args):
     obs1tuning2 = obs1['Tuning2']
     
     nFramesFile = obs1['time'].shape[0]
-    srate = float(obs1.attrs['sampleRate'])
+    srate = float(obs1.attrs['sample_rate'])
     beam = int(obs1.attrs['Beam'])
     LFFT = int(obs1.attrs['LFFT'])
-    nChan = int(obs1.attrs['nChan'])
-    chanOffset = LFFT - nChan		# Packing offset to deal with old HDF5 files that contain only LFFT-1 channels
-    centralFreq1 = obs1tuning1['freq'][LFFT/2-chanOffset]
-    centralFreq2 = obs1tuning2['freq'][LFFT/2-chanOffset]
-    dataProducts = list(obs1tuning1)
-    dataProducts.sort()
+    nchan = int(obs1.attrs['nchan'])
+    chanOffset = LFFT - nchan		# Packing offset to deal with old HDF5 files that contain only LFFT-1 channels
+    central_freq1 = obs1tuning1['freq'][LFFT/2-chanOffset]
+    central_freq2 = obs1tuning2['freq'][LFFT/2-chanOffset]
+    data_products = list(obs1tuning1)
+    data_products.sort()
     try:
-        del dataProducts[ dataProducts.index('Saturation') ]
+        del data_products[ data_products.index('Saturation') ]
     except ValueError:
         pass
     try:
-        del dataProducts[ dataProducts.index('freq') ]
+        del data_products[ data_products.index('freq') ]
     except ValueError:
         pass
     tInt = obs1.attrs['tInt']
@@ -154,17 +150,17 @@ def main(args):
     print "Input Filename: %s" % args.filename
     print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
     print "Beam: %i" % beam
-    print "Tunings: %.1f Hz, %.1f Hz" % (centralFreq1, centralFreq2)
+    print "Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2)
     print "Sample Rate: %i Hz" % srate
     print "Sample Time: %f s" % tInt
     print "Sub-block Time: %f s" % (tInt*nsblk,)
-    print "Data Products: %s" % ','.join(dataProducts)
+    print "Data Products: %s" % ','.join(data_products)
     print "Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile)
     print "---"
     
     # Create the output PSRFITS file(s)
     pfu_out = []
-    if 'XX' in dataProducts and 'YY' in dataProducts and (not args.no_summing):
+    if 'XX' in data_products and 'YY' in data_products and (not args.no_summing):
         polNames = 'I'
         nPols = 1
         def reduceEngine(x):
@@ -176,8 +172,8 @@ def main(args):
             return y
     else:
         args.no_summing = True
-        polNames = ''.join(dataProducts)
-        nPols = len(dataProducts)
+        polNames = ''.join(data_products)
+        nPols = len(data_products)
         reduceEngine = lambda x: x
         
     if args.four_bit_data:
@@ -195,9 +191,9 @@ def main(args):
         
         ## Frequency, bandwidth, and channels
         if t == 1:
-            pfo.hdr.fctr=centralFreq1/1e6
+            pfo.hdr.fctr=central_freq1/1e6
         else:
-            pfo.hdr.fctr=centralFreq2/1e6
+            pfo.hdr.fctr=central_freq2/1e6
         pfo.hdr.BW = srate/1e6
         pfo.hdr.nchan = LFFT
         pfo.hdr.df = srate/1e6/LFFT
@@ -268,9 +264,9 @@ def main(args):
     chunkSize = nsblk
     
     # Calculate the SK limites for weighting
-    if (not args.no_sk_flagging) and 'XX' in dataProducts and 'YY' in dataProducts:
+    if (not args.no_sk_flagging) and 'XX' in data_products and 'YY' in data_products:
         skN = int(tInt*srate / LFFT)
-        skLimits = kurtosis.getLimits(4.0, M=1.0*nsblk, N=1.0*skN)
+        skLimits = kurtosis.get_limits(4.0, M=1.0*nsblk, N=1.0*skN)
         
         GenerateMask = lambda x: ComputePseudoSKMask(x, LFFT, skN, skLimits[0], skLimits[1])
     else:
@@ -293,7 +289,7 @@ def main(args):
     nSubInts = nFramesFile / chunkSize
     for i in xrange(nSubInts):
         ## Read in the data
-        data = numpy.zeros((2*len(dataProducts), LFFT*chunkSize), dtype=numpy.float64)
+        data = numpy.zeros((2*len(data_products), LFFT*chunkSize), dtype=numpy.float64)
         
         for j in xrange(chunkSize):
             jP = j + i*chunkSize
@@ -306,7 +302,7 @@ def main(args):
             
             k = 0
             for t in (obs1tuning1, obs1tuning2):
-                for p in dataProducts:
+                for p in data_products:
                     data[k, j*LFFT+chanOffset:(j+1)*LFFT] = t[p][jP,:]
                     k += 1
         siCount += 1

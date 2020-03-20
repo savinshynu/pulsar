@@ -3,10 +3,6 @@
 
 """
 Given a DRX file, create one of more PSRFITS file(s).
-
-$Rev$
-$LastChangedBy$
-$LastChangedDate$
 """
 
 import os
@@ -81,7 +77,7 @@ def reader(idf, chunkTime, outQueue, core=None, verbose=True):
             try:
                 readT, t, rawdata = idf.read(chunkTime)
                 siCount += 1
-            except errors.eofError:
+            except errors.EOFError:
                 done = True
                 break
                 
@@ -139,9 +135,9 @@ def main(args):
     idf = DRXFile(args.filename)
     
     # Load in basic information about the data
-    nFramesFile = idf.getInfo('nFrames')
-    srate = idf.getInfo('sampleRate')
-    beampols = idf.getInfo('beampols')
+    nFramesFile = idf.get_info('nFrames')
+    srate = idf.get_info('sample_rate')
+    beampols = idf.get_info('beampols')
     tunepol = beampols
     
     # Offset, if needed
@@ -151,24 +147,24 @@ def main(args):
     nFramesFile -= int(o*srate/4096)*tunepol
     
     ## Date
-    beginDate = ephem.Date(astro.unix_to_utcjd(idf.getInfo('tStart')) - astro.DJD_OFFSET)
+    beginDate = ephem.Date(astro.unix_to_utcjd(idf.get_info('tStart')) - astro.DJD_OFFSET)
     beginTime = beginDate.datetime()
-    mjd = astro.jd_to_mjd(astro.unix_to_utcjd(idf.getInfo('tStart')))
+    mjd = astro.jd_to_mjd(astro.unix_to_utcjd(idf.get_info('tStart')))
     mjd_day = int(mjd)
     mjd_sec = (mjd-mjd_day)*86400
     if args.output is None:
         args.output = "drx_%05d_%s" % (mjd_day, args.source.replace(' ', ''))
         
     ## Tuning frequencies
-    centralFreq1 = idf.getInfo('freq1')
-    centralFreq2 = idf.getInfo('freq2')
-    beam = idf.getInfo('beam')
+    central_freq1 = idf.get_info('freq1')
+    central_freq2 = idf.get_info('freq2')
+    beam = idf.get_info('beam')
     
     # File summary
     print "Input Filename: %s" % args.filename
     print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
     print "Tune/Pols: %i" % tunepol
-    print "Tunings: %.1f Hz, %.1f Hz" % (centralFreq1, centralFreq2)
+    print "Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2)
     print "Sample Rate: %i Hz" % srate
     print "Sample Time: %f s" % (LFFT/srate,)
     print "Sub-block Time: %f s" % (LFFT/srate*nsblk,)
@@ -212,9 +208,9 @@ def main(args):
         
         ## Frequency, bandwidth, and channels
         if t == 1:
-            pfo.hdr.fctr=centralFreq1/1e6
+            pfo.hdr.fctr=central_freq1/1e6
         else:
-            pfo.hdr.fctr=centralFreq2/1e6
+            pfo.hdr.fctr=central_freq2/1e6
         pfo.hdr.BW = srate/1e6
         pfo.hdr.nchan = LFFT
         pfo.hdr.df = srate/1e6/LFFT
@@ -281,7 +277,7 @@ def main(args):
     
     # Calculate the SK limites for weighting
     if (not args.no_sk_flagging):
-        skLimits = kurtosis.getLimits(4.0, 1.0*nsblk)
+        skLimits = kurtosis.get_limits(4.0, 1.0*nsblk)
         
         GenerateMask = lambda x: ComputeSKMask(x, skLimits[0], skLimits[1])
     else:

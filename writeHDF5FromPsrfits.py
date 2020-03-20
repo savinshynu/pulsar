@@ -3,10 +3,6 @@
 
 """
 Given a PSRFITS file, create a HDF5 file in the standard LWA1 format.
-
-$Rev$
-$LastChangedBy$
-$LastChangedDate$
 """
 
 import os
@@ -132,14 +128,14 @@ def main(args):
         tSubs = nSubs*tInt
         nPol = hdulist[1].header['NPOL']
         if nPol == 1:
-            dataProducts = ['I',]
+            data_products = ['I',]
         elif nPol == 2:
             if hdulist[0].header['FD_POLN'] == 'CIRC':
-                dataProducts = ['LL', 'RR']
+                data_products = ['LL', 'RR']
             else:
-                dataProducts = ['XX', 'YY']
+                data_products = ['XX', 'YY']
         else:
-            dataProducts = ['I', 'Q', 'U', 'V']
+            data_products = ['I', 'Q', 'U', 'V']
         nChunks = len(hdulist[1].data)
         
         ## File cross-validation to make sure that everything is in order
@@ -187,7 +183,7 @@ def main(args):
         print "Target: %s" % sourceName
         print "RA: %.3f hours" % (ra/15.0,)
         print "Dec: %.3f degrees" % dec
-        print "Data Products: %s" % ','.join(dataProducts)
+        print "Data Products: %s" % ','.join(data_products)
         print "Integration Time: %.3f ms" % (tInt*1e3,)
         print "Sub-integrations: %i (%.3f s)" % (nChunks, nChunks*tSubs)
         print "---"
@@ -216,7 +212,7 @@ def main(args):
             f = hdfData.createNewFile(outname)
             hdfData.fillMinimum(f, 1, beam, srate)
             for t in (1, 2):
-                hdfData.createDataSets(f, 1, t, numpy.arange(LFFT, dtype=numpy.float64), dur*nSubs, dataProducts)
+                hdfData.createDataSets(f, 1, t, numpy.arange(LFFT, dtype=numpy.float64), dur*nSubs, data_products)
             f.attrs['FileGenerator'] = 'writeHDF5FromPsrfits.py'
             f.attrs['InputData'] = os.path.basename(filename)
             
@@ -224,15 +220,15 @@ def main(args):
             ds['obs1'] = hdfData.getObservationSet(f, 1)
             ds['obs1-time'] = ds['obs1'].create_dataset('time', (dur*nSubs,), 'f8')
             for t in (1, 2):
-                ds['obs1-freq%i' % (t,)] = hdfData.getDataSet(f, 1, t, 'freq')
-                for p in dataProducts:
-                    ds["obs1-%s%i" % (p, t)] = hdfData.getDataSet(f, 1, t, p)
+                ds['obs1-freq%i' % (t,)] = hdfData.get_data_set(f, 1, t, 'freq')
+                for p in data_products:
+                    ds["obs1-%s%i" % (p, t)] = hdfData.get_data_set(f, 1, t, p)
                     
             ### Add in mask information
             for t in (1, 2):
                 tuningInfo = ds["obs1"].get("Tuning%i" % t, None)
                 maskInfo = tuningInfo.create_group("Mask")
-                for p in dataProducts:
+                for p in data_products:
                     maskInfo.create_dataset(p, ds["obs1-%s%i" % (p, t)].shape, 'bool')
                     ds["obs1-mask-%s%i" % (p, t)] = maskInfo.get(p, None)
                     
@@ -250,7 +246,7 @@ def main(args):
             ds['obs1'].attrs['tInt'] = tInt
             ds['obs1'].attrs['tInt_Units'] = 's'
             ds['obs1'].attrs['LFFT'] = LFFT
-            ds['obs1'].attrs['nChan'] = LFFT
+            ds['obs1'].attrs['nchan'] = LFFT
             
             ### Create the progress bar so that we can keep up with the conversion.
             try:
@@ -295,7 +291,7 @@ def main(args):
                 
                 if c == 0:
                     ds['obs1-time'][k] = tStart + t
-                for l,p in enumerate(dataProducts):
+                for l,p in enumerate(data_products):
                     ds['obs1-%s%i' % (p,tuning)][k,:] = d[l,:]
                     ds['obs1-mask-%s%i' % (p,tuning)][k,:] = msk
                     

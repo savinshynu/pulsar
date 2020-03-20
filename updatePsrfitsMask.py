@@ -56,7 +56,7 @@ def main(args):
         skN = srate / LFFT * (tInt / nSubs)
         if nPol == 1:
             skN *= 2
-        skLimits = kurtosis.getLimits(args.sk_sigma, skM, N=1.0*skN)
+        skLimits = kurtosis.get_limits(args.sk_sigma, skM, N=1.0*skN)
         print "  (p)SK M: %i" % (nSubsChunk*nSubs,)
         print "  (p)SK N: %i" % skN
         print "  (p)SK Limits: %.4f <= valid <= %.4f" % skLimits
@@ -126,7 +126,7 @@ def main(args):
             ## Compute the S-K statistics
             for p in xrange(nPol):
                 for l in xrange(LFFT):
-                    sk[p,l] = kurtosis.spectralPower(blockData[p,l,:], N=1.0*skN)
+                    sk[p,l] = kurtosis.spectral_power(blockData[p,l,:], N=1.0*skN)
                     
             ## Compute the new mask - both SK and the frequency flagging
             newMask = numpy.where( (sk < skLimits[0]) | (sk > skLimits[1]), 0.0, 1.0 )

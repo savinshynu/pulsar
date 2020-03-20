@@ -3,10 +3,6 @@
 
 """
 Given a collection of single pulse files from PRESTO, plot them in an interactive way.
-
-$Rev$
-$LastChangedBy$
-$LastChangedDate$
 """
 
 import os
@@ -46,7 +42,7 @@ from matplotlib import cm
 from matplotlib.figure import Figure
 
 __version__ = "0.1"
-__revision__ = "$Rev$"
+__revision__ = "$Rev: 3039 $"
 __author__ = "Jayce Dowell"
 
 
@@ -2394,7 +2390,7 @@ class WaterfallDisplay(wx.Frame):
         
         ## Data Menu
         self.dataMenuOptions = []
-        for i,dataProduct in enumerate(self.dataProducts):
+        for i,dataProduct in enumerate(self.data_products):
             dmo = dataMenu.AppendRadioItem(ID_WATERFALL_PRODUCT_1+i, '%s' % dataProduct)
             self.dataMenuOptions.append( dmo )
         dataMenu.AppendSeparator()
@@ -2476,7 +2472,7 @@ class WaterfallDisplay(wx.Frame):
         self.Bind(wx.EVT_MENU, self.onColorStretch, id=ID_WATERFALL_STRETCH_SINH)
         self.Bind(wx.EVT_MENU, self.onColorStretch, id=ID_WATERFALL_STRETCH_HIST)
         
-        for i,dataProduct in enumerate(self.dataProducts):
+        for i,dataProduct in enumerate(self.data_products):
             self.Bind(wx.EVT_MENU, self.onDataProduct, id=ID_WATERFALL_PRODUCT_1+i)
         self.Bind(wx.EVT_MENU, self.onAutoDecimation, id=ID_WATERFALL_DECIMATION_AUTO)
         self.Bind(wx.EVT_MENU, self.onAdjustDecimation, id=ID_WATERFALL_DECIMATION_ADJUST)
@@ -2751,19 +2747,19 @@ class WaterfallDisplay(wx.Frame):
         tSubs = nSubs*tInt
         nPol = hdulist[1].header['NPOL']
         if nPol == 1:
-            dataProducts = ['I',]
+            data_products = ['I',]
             self.usedB = True
         elif nPol == 2:
             if hdulist[0].header['FD_POLN'] == 'CIRC':
-                dataProducts = ['LL', 'RR']
+                data_products = ['LL', 'RR']
                 self.usedB = True
             else:
-                dataProducts = ['XX', 'YY']
+                data_products = ['XX', 'YY']
                 self.usedB = True
         else:
-            dataProducts = ['I', 'Q', 'U', 'V']
+            data_products = ['I', 'Q', 'U', 'V']
             self.usedB = False
-        self.dataProducts = dataProducts
+        self.data_products = data_products
         nChunks = len(hdulist[1].data)
         
         ## Frequency information
@@ -2912,7 +2908,7 @@ class WaterfallDisplay(wx.Frame):
         tRel = self.tRel
         tSweep = self.tSweep
         freq = self.freq
-        dataProduct = self.dataProducts[self.index]
+        dataProduct = self.data_products[self.index]
         if self.bandpass:
             spec = self.specBandpass[:,self.index,:]
             specD = self.specBandpassD[:,self.index,:]
@@ -3052,7 +3048,7 @@ class WaterfallContrastAdjust(wx.Frame):
         panel = wx.Panel(self)
         sizer = wx.GridBagSizer(5, 5)
         
-        pol = self.parent.dataProducts[self.parent.index]
+        pol = self.parent.data_products[self.parent.index]
         if self.parent.bandpass:
             typ = wx.StaticText(panel, label='%s - Bandpass' % (pol,))
         else:
