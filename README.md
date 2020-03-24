@@ -3,7 +3,7 @@ LWA1 Pulsar Scripts
 The LSL Pulsar extension contains a variety of tools for converting LWA1 
 data to the PSRFITS format.  These tools build off the LSL 0.6.x/1.0.x 
 frameworks as well as the psrfits_utils Python module.  psrfits_utils can
-be found at:  https://github.com/kstovall/psrfits_utils
+be found at:  https://github.com/lwa-project/psrfits_utils
 
 No installation (e.g., python setup.py install) is required to use the 
 software.  Simply run make to build the _psr.so and _helper.so modules and 
