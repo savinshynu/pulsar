@@ -1,0 +1,50 @@
+sudo: required
+  
+language: python
+
+python:
+    - 2.7
+    - 3.6
+    ## PyPy versions
+    #- pypy2.7-6.0
+    #- pypy3
+
+addons:
+    apt:
+        packages:
+            - build-essential
+            - curl
+            - git
+            - pkg-config
+            - software-properties-common
+            - python-dev
+            - python3-dev
+            - libfftw3-dev
+            - libgdbm-dev
+            - libhdf5-dev
+            - tcsh
+            - swig
+            - libcfitsio-dev
+
+install:
+    - pip install \
+        setuptools \
+        numpy \
+        matplotlib \
+        scipy \
+        h5py
+    - pip install git+https://github.com/lwa-project/lsl.git
+    - pip install pylint
+
+before_script:
+    - git clone https://github.com/lwa-project/psrfits_utils.git
+    - cd psrfits_utils
+    - ./prepare
+    - ./configure --prefix=${HOME}/local/
+    - make
+    - make install
+
+script:
+    - cd tests
+    - export LD_LIBRARY_PATH=${HOME}/local/lib:${LD_LIBRARY_PATH}
+    - python -m unittest discover
