@@ -43,6 +43,7 @@ before_script:
     - ./configure --prefix=${HOME}/local/
     - make
     - make install
+    - cd ..
 
 script:
     - cd tests
