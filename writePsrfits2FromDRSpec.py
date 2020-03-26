@@ -5,6 +5,13 @@
 Given a DR spectrometer file, create one of more PSRFITS file(s).
 """
 
+# Python3 compatiability
+from __future__ import print_function, division
+import sys
+if sys.version_info > (3,):
+    xrange = range
+    raw_input = input
+    
 import os
 import sys
 import numpy
@@ -25,11 +32,16 @@ from _psr import ComputePseudoSKMask, OptimizeDataLevels8Bit, OptimizeDataLevels
 
 
 def resolveTarget(name):
-    import urllib
+    try:
+        from urllib2 import urlopen
+        from urllib import urlencode, quote_plus
+    except ImportError:
+        from urllib.request import urlopen
+        from urllib.parse import urlencode, quote_plus
     from xml.etree import ElementTree
     
     try:
-        result = urllib.urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % urllib.quote_plus(name))
+        result = urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % quote_plus(name))
         tree = ElementTree.fromstring(result.read())
         target = tree.find('Target')
         service = target.find('Resolver')
@@ -51,7 +63,7 @@ def main(args):
     if args.source is not None:
         if args.ra is None or args.dec is None:
             tempRA, tempDec, tempService = resolveTarget('PSR '+args.source)
-            print "%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService)
+            print("%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService))
             out = raw_input('=> Accept? [Y/n] ')
             if out == 'n' or out == 'N':
                 sys.exit()
@@ -102,18 +114,18 @@ def main(args):
         args.output = "drx_%05d_%s" % (mjd_day, args.source.replace(' ', ''))
         
     # File summary
-    print "Input Filename: %s" % args.filename
-    print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
-    print "Beam: %i" % beam
-    print "Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2)
-    print "Sample Rate: %i Hz" % srate
-    print "Sample Time: %f s" % tInt
-    print "Sub-block Time: %f s" % (tInt*nsblk,)
-    print "Data Products: %s" % ','.join(data_products)
-    print "Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile)
-    print "---"
-    print "Offset: %.3f s (%i frames)" % (o, o/tInt)
-    print "---"
+    print("Input Filename: %s" % args.filename)
+    print("Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd))
+    print("Beam: %i" % beam)
+    print("Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2))
+    print("Sample Rate: %i Hz" % srate)
+    print("Sample Time: %f s" % tInt)
+    print("Sub-block Time: %f s" % (tInt*nsblk,))
+    print("Data Products: %s" % ','.join(data_products))
+    print("Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile))
+    print("---")
+    print("Offset: %.3f s (%i frames)" % (o, o/tInt))
+    print("---")
     
     # Create the output PSRFITS file(s)
     pfu_out = []

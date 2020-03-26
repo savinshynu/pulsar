@@ -5,6 +5,13 @@
 Given a PSRFITS file, create a HDF5 file in the standard LWA1 format.
 """
 
+# Python3 compatiability
+from __future__ import print_function, division
+import sys
+if sys.version_info > (3,):
+    xrange = range
+    raw_input = input
+    
 import os
 import re
 import sys
@@ -26,7 +33,7 @@ _fnRE = re.compile('.*_b(?P<beam>[1-4])(t(?P<tuning>[12]))?_.*\.fits')
 
 
 def usage(exitCode=None):
-    print """writeHDF5FromPsrfits.py - Read in a PSRFITS file and create an HDF5 
+    print("""writeHDF5FromPsrfits.py - Read in a PSRFITS file and create an HDF5 )
 file in the standard LWA1 format.
 
 Usage: writeFromHDF5FromPsrfits.py [OPTIONS] file
@@ -37,8 +44,8 @@ Options:
                             seconds (default = 0)
 -d, --duration              Amount of time to save in seconds (default = 10)
 -o, --output                Output file basename
-"""
-
+""")
+    
     if exitCode is not None:
         sys.exit(exitCode)
     else:
@@ -56,9 +63,9 @@ def parseOptions(args):
     # Read in and process the command line flags
     try:
         opts, args = getopt.getopt(args, "ho:s:d:", ["help", "output=", "skip=", "duration="])
-    except getopt.GetoptError, err:
+    except getopt.GetoptError as err:
         # Print help information and exit:
-        print str(err) # will print something like "option -a not recognized"
+        print(str(err)) # will print something like "option -a not recognized"
         usage(exitCode=2)
         
     # Work through opts
@@ -145,14 +152,14 @@ def main(args):
                 keywordOld = keyword+"Old"
                 valid = eval("%s == %s" % (keyword, keywordOld))
                 if not valid:
-                    print "ERROR:  Detail '%s' of %s does not match that of the first file" % (keyword, os.path.basename(filename))
-                    print "ERROR:  Aborting"
+                    print("ERROR:  Detail '%s' of %s does not match that of the first file" % (keyword, os.path.basename(filename)))
+                    print("ERROR:  Aborting")
                     validationPass = False
                     
             if not validationPass:
                 continue
                 
-        except NameError, e:
+        except NameError as e:
             sourceNameOld = sourceName
             raOld = ra
             decOld = dec
@@ -173,23 +180,23 @@ def main(args):
         config['duration'] = dur * tSubs
         
         ## Report
-        print "Filename: %s (%i of %i)" % (filename, c+1, len(filenames))
-        print "Date of First Frame: %s" % datetime.utcfromtimestamp(tStart)
-        print "Beam: %i" % beam
-        print "Tuning: %i" % tuning
-        print "Sample Rate: %i Hz" % srate
-        print "Tuning Frequency: %.3f Hz" % cFreq
-        print "---"
-        print "Target: %s" % sourceName
-        print "RA: %.3f hours" % (ra/15.0,)
-        print "Dec: %.3f degrees" % dec
-        print "Data Products: %s" % ','.join(data_products)
-        print "Integration Time: %.3f ms" % (tInt*1e3,)
-        print "Sub-integrations: %i (%.3f s)" % (nChunks, nChunks*tSubs)
-        print "---"
-        print "Offset: %.3f s (%i subints.)" % (config['skip'], skip)
-        print "Duration: %.3f s (%i subints.)" % (config['duration'], dur)
-        print "Transform Length: %i" % LFFT
+        print("Filename: %s (%i of %i)" % (filename, c+1, len(filenames)))
+        print("Date of First Frame: %s" % datetime.utcfromtimestamp(tStart))
+        print("Beam: %i" % beam)
+        print("Tuning: %i" % tuning)
+        print("Sample Rate: %i Hz" % srate)
+        print("Tuning Frequency: %.3f Hz" % cFreq)
+        print("---")
+        print("Target: %s" % sourceName)
+        print("RA: %.3f hours" % (ra/15.0,))
+        print("Dec: %.3f degrees" % dec)
+        print("Data Products: %s" % ','.join(data_products))
+        print("Integration Time: %.3f ms" % (tInt*1e3,))
+        print("Sub-integrations: %i (%.3f s)" % (nChunks, nChunks*tSubs))
+        print("---")
+        print("Offset: %.3f s (%i subints.)" % (config['skip'], skip))
+        print("Duration: %.3f s (%i subints.)" % (config['duration'], dur))
+        print("Transform Length: %i" % LFFT)
         
         ## Prepare the HDF5 file
         if f is None:

@@ -5,6 +5,13 @@
 Given a DRX file, create one of more PSRFITS file(s).
 """
 
+# Python3 compatiability
+from __future__ import print_function, division
+import sys
+if sys.version_info > (3,):
+    xrange = range
+    raw_input = input
+    
 import os
 import sys
 import time
@@ -37,11 +44,16 @@ readerQ = deque()
 
 
 def resolveTarget(name):
-    import urllib
+    try:
+        from urllib2 import urlopen
+        from urllib import urlencode, quote_plus
+    except ImportError:
+        from urllib.request import urlopen
+        from urllib.parse import urlencode, quote_plus
     from xml.etree import ElementTree
     
     try:
-        result = urllib.urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % urllib.quote_plus(name))
+        result = urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % quote_plus(name))
         tree = ElementTree.fromstring(result.read())
         target = tree.find('Target')
         service = target.find('Resolver')
@@ -66,7 +78,7 @@ def reader(idf, chunkTime, outQueue, core=None, verbose=True):
     if core is not None:
         cstatus = BindToCore(core)
         if verbose:
-            print 'Binding reader to core %i -> %s' % (core, cstatus)
+            print('Binding reader to core %i -> %s' % (core, cstatus))
             
     try:
         while True:
@@ -87,7 +99,7 @@ def reader(idf, chunkTime, outQueue, core=None, verbose=True):
     except Exception as e:
         lines = traceback.format_exc()
         lines = '\x1b[2KReader Error '+lines
-        print lines,
+        print(lines,)
         
     outQueue.append( (None,done) )
 
@@ -107,7 +119,7 @@ def main(args):
     if args.source is not None:
         if args.ra is None or args.dec is None:
             tempRA, tempDec, tempService = resolveTarget('PSR '+args.source)
-            print "%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService)
+            print("%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService))
             out = raw_input('=> Accept? [Y/n] ')
             if out == 'n' or out == 'N':
                 sys.exit()
@@ -161,18 +173,18 @@ def main(args):
     beam = idf.get_info('beam')
     
     # File summary
-    print "Input Filename: %s" % args.filename
-    print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
-    print "Tune/Pols: %i" % tunepol
-    print "Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2)
-    print "Sample Rate: %i Hz" % srate
-    print "Sample Time: %f s" % (LFFT/srate,)
-    print "Sub-block Time: %f s" % (LFFT/srate*nsblk,)
-    print "Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol)
-    print "---"
-    print "Offset: %.3f s (%i frames)" % (o, o*srate/4096*tunepol)
-    print "---"
-    print "Using FFTW Wisdom? %s" % useWisdom
+    print("Input Filename: %s" % args.filename)
+    print("Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd))
+    print("Tune/Pols: %i" % tunepol)
+    print("Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2))
+    print("Sample Rate: %i Hz" % srate)
+    print("Sample Time: %f s" % (LFFT/srate,))
+    print("Sub-block Time: %f s" % (LFFT/srate*nsblk,))
+    print("Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol))
+    print("---")
+    print("Offset: %.3f s (%i frames)" % (o, o*srate/4096*tunepol))
+    print("---")
+    print("Using FFTW Wisdom? %s" % useWisdom)
     
     # Create the output PSRFITS file(s)
     pfu_out = []

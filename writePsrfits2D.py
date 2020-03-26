@@ -5,6 +5,13 @@
 Given a DRX file, create one of more PSRFITS file(s).
 """
 
+# Python3 compatiability
+from __future__ import print_function, division
+import sys
+if sys.version_info > (3,):
+    xrange = range
+    raw_input = input
+    
 import os
 import sys
 import time
@@ -37,11 +44,16 @@ readerQ = deque()
 
 
 def resolveTarget(name):
-    import urllib
+    try:
+        from urllib2 import urlopen
+        from urllib import urlencode, quote_plus
+    except ImportError:
+        from urllib.request import urlopen
+        from urllib.parse import urlencode, quote_plus
     from xml.etree import ElementTree
     
     try:
-        result = urllib.urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % urllib.quote_plus(name))
+        result = urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % quote_plus(name))
         tree = ElementTree.fromstring(result.read())
         target = tree.find('Target')
         service = target.find('Resolver')
@@ -66,7 +78,7 @@ def reader(idf, chunkTime, outQueue, core=None, verbose=True):
     if core is not None:
         cstatus = BindToCore(core)
         if verbose:
-            print 'Binding reader to core %i -> %s' % (core, cstatus)
+            print('Binding reader to core %i -> %s' % (core, cstatus))
             
     try:
         while True:
@@ -87,7 +99,7 @@ def reader(idf, chunkTime, outQueue, core=None, verbose=True):
     except Exception as e:
         lines = traceback.format_exc()
         lines = '\x1b[2KReader Error '+lines
-        print lines,
+        print(lines,)
         
     outQueue.append( (None,done) )
 
@@ -108,7 +120,7 @@ def main(args):
     if args.source is not None:
         if args.ra is None or args.dec is None:
             tempRA, tempDec, tempService = resolveTarget('PSR '+args.source)
-            print "%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService)
+            print("%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService))
             out = raw_input('=> Accept? [Y/n] ')
             if out == 'n' or out == 'N':
                 sys.exit()
@@ -169,18 +181,18 @@ def main(args):
     spectraFreq2 = numpy.fft.fftshift( numpy.fft.fftfreq(LFFT, d=1.0/srate) ) + central_freq2
     
     # File summary
-    print "Input Filename: %s" % args.filename
-    print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
-    print "Tune/Pols: %i" % tunepol
-    print "Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2)
-    print "Sample Rate: %i Hz" % srate
-    print "Sample Time: %f s" % (LFFT/srate,)
-    print "Sub-block Time: %f s" % (LFFT/srate*nsblk,)
-    print "Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol)
-    print "---"
-    print "Using FFTW Wisdom? %s" % useWisdom
-    print "DM: %.4f pc / cm^3" % DM
-    print "Samples Needed: %i, %i to %i, %i" % (get_coherent_sample_size(central_freq1-srate/2, 1.0*srate/LFFT, DM), get_coherent_sample_size(central_freq2-srate/2, 1.0*srate/LFFT, DM), get_coherent_sample_size(central_freq1+srate/2, 1.0*srate/LFFT, DM), get_coherent_sample_size(central_freq2+srate/2, 1.0*srate/LFFT, DM))
+    print("Input Filename: %s" % args.filename)
+    print("Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd))
+    print("Tune/Pols: %i" % tunepol)
+    print("Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2))
+    print("Sample Rate: %i Hz" % srate)
+    print("Sample Time: %f s" % (LFFT/srate,))
+    print("Sub-block Time: %f s" % (LFFT/srate*nsblk,))
+    print("Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol))
+    print("---")
+    print("Using FFTW Wisdom? %s" % useWisdom)
+    print("DM: %.4f pc / cm^3" % DM)
+    print("Samples Needed: %i, %i to %i, %i" % (get_coherent_sample_size(central_freq1-srate/2, 1.0*srate/LFFT, DM), get_coherent_sample_size(central_freq2-srate/2, 1.0*srate/LFFT, DM), get_coherent_sample_size(central_freq1+srate/2, 1.0*srate/LFFT, DM), get_coherent_sample_size(central_freq2+srate/2, 1.0*srate/LFFT, DM)))
     
     # Create the output PSRFITS file(s)
     pfu_out = []
@@ -213,7 +225,7 @@ def main(args):
         raise RuntimeError("Too few samples for coherent dedispersion.  Considering increasing the number of channels.")
         
     # Adjust the time for the padding used for coherent dedispersion
-    print "MJD shifted by %.3f ms to account for padding" %  (nsblk*LFFT/srate*1000.0,)
+    print("MJD shifted by %.3f ms to account for padding" %  (nsblk*LFFT/srate*1000.0,))
     beginDate = ephem.Date(astro.unix_to_utcjd(idf.get_info('tStart') + nsblk*LFFT/srate) - astro.DJD_OFFSET)
     beginTime = beginDate.datetime()
     mjd = astro.jd_to_mjd(astro.unix_to_utcjd(idf.get_info('tStart') + nsblk*LFFT/srate))

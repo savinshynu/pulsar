@@ -5,6 +5,12 @@
 Given a DRX file, create two interleaved DRX (DRXI) files, one for each tuning
 """
 
+# Python3 compatiability
+from __future__ import print_function, division
+import sys
+if sys.version_info > (3,):
+    xrange = range
+    
 import os
 import sys
 import copy
@@ -66,8 +72,8 @@ class RawDRXFrame(object):
 
 class RawDRXFrameBuffer(buffer.FrameBufferBase):
     """
-    A sub-type of FrameBuffer specifically for dealing with raw (packed) DRX 
-    frames.  See :class:`lsl.reader.buffer.FrameBuffer` for a description of 
+    A sub-type of FrameBufferBase specifically for dealing with raw (packed) DRX 
+    frames.  See :class:`lsl.reader.buffer.FrameBufferBase` for a description of 
     how the buffering is implemented.
     
     Keywords:
@@ -187,12 +193,12 @@ def main(args):
     beam = idf.get_info('beam')
     
     # File summary
-    print "Input Filename: %s" % args.filename
-    print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
-    print "Tune/Pols: %i" % tunepol
-    print "Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2)
-    print "Sample Rate: %i Hz" % srate
-    print "Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol)
+    print("Input Filename: %s" % args.filename)
+    print("Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd))
+    print("Tune/Pols: %i" % tunepol)
+    print("Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2))
+    print("Sample Rate: %i Hz" % srate)
+    print("Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol))
     
     if args.count > 0:
         nCaptures = int(args.count * srate / 4096)
@@ -201,12 +207,12 @@ def main(args):
         args.count = nCaptures * 4096 / srate
     nSkip = int(args.offset * srate / 4096 )
     
-    print "Seconds to Skip:  %.2f (%i captures)" % (args.offset, nSkip)
-    print "Seconds to Split: %.2f (%i captures)" % (args.count, nCaptures)
+    print("Seconds to Skip:  %.2f (%i captures)" % (args.offset, nSkip))
+    print("Seconds to Split: %.2f (%i captures)" % (args.count, nCaptures))
     
     outname = os.path.basename(args.filename)
     outname = os.path.splitext(outname)[0]
-    print "Writing %.2f s to file '%s_b%it[12].dat'" % (nCaptures*4096/srate, outname, beam)
+    print("Writing %.2f s to file '%s_b%it[12].dat'" % (nCaptures*4096/srate, outname, beam))
     
     # Ready the internal interface for file access
     fh = idf.fh
@@ -238,7 +244,7 @@ def main(args):
         for i in xrange(tunepol):
             try:
                 rFrames.append( RawDRXFrame(fh.read(drx.FRAME_SIZE)) )
-                #print rFrames[-1].id, rFrames[-1].timetag, c, i
+                #print(rFrames[-1].id, rFrames[-1].timetag, c, i)
             except errors.EOFError:
                 eofFound = True
                 buffer.append(rFrames)

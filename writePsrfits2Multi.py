@@ -6,6 +6,13 @@ Given several DRX files observed simultaneously with different beams, create
 a collection of PSRFITS files.
 """
 
+# Python3 compatiability
+from __future__ import print_function, division
+import sys
+if sys.version_info > (3,):
+    xrange = range
+    raw_input = input
+    
 import os
 import sys
 import time
@@ -38,11 +45,16 @@ readerQ = deque()
 
 
 def resolveTarget(name):
-    import urllib
+    try:
+        from urllib2 import urlopen
+        from urllib import urlencode, quote_plus
+    except ImportError:
+        from urllib.request import urlopen
+        from urllib.parse import urlencode, quote_plus
     from xml.etree import ElementTree
     
     try:
-        result = urllib.urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % urllib.quote_plus(name))
+        result = urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % quote_plus(name))
         tree = ElementTree.fromstring(result.read())
         target = tree.find('Target')
         service = target.find('Resolver')
@@ -67,7 +79,7 @@ def reader(idf, chunkTime, outQueue, core=None, verbose=True):
     if core is not None:
         cstatus = BindToCore(core)
         if verbose:
-            print 'Binding reader to core %i -> %s' % (core, cstatus)
+            print('Binding reader to core %i -> %s' % (core, cstatus))
             
     try:
         while True:
@@ -88,7 +100,7 @@ def reader(idf, chunkTime, outQueue, core=None, verbose=True):
     except Exception as e:
         lines = traceback.format_exc()
         lines = '\x1b[2KReader Error '+lines
-        print lines,
+        print(lines,)
         
     outQueue.append( (None,done) )
 
@@ -109,7 +121,7 @@ def main(args):
     if args.source is not None:
         if args.ra is None or args.dec is None:
             tempRA, tempDec, tempService = resolveTarget('PSR '+args.source)
-            print "%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService)
+            print("%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService))
             out = raw_input('=> Accept? [Y/n] ')
             if out == 'n' or out == 'N':
                 sys.exit()
@@ -189,27 +201,27 @@ def main(args):
         siCountMax.append( nSubints )
     siCountMax = min(siCountMax)
     
-    print "Proposed File Time Alignment:"
+    print("Proposed File Time Alignment:")
     residualOffsets = []
     for filename,startTime,frameOffset,sampleOffset,tickOffset in zip(args.filename, startTimes, frameOffsets, sampleOffsets, tickOffsets):
         tStartNow = startTime
         tStartAfter = startTime + frameOffset*ttSkip + int(sampleOffset*fS/srate) + tickOffset
         residualOffset = max(startTimes) - tStartAfter
-        print "  %s with %i frames, %i samples, %i ticks" % (os.path.basename(filename), frameOffset, sampleOffset, tickOffset)
-        print "    before: %i" % tStartNow
-        print "    after:  %i" % tStartAfter
-        print "      residual: %i" % residualOffset
+        print("  %s with %i frames, %i samples, %i ticks" % (os.path.basename(filename), frameOffset, sampleOffset, tickOffset))
+        print("    before: %i" % tStartNow)
+        print("    after:  %i" % tStartAfter)
+        print("      residual: %i" % residualOffset)
         
         residualOffsets.append( residualOffset )
-    print "Minimum Residual: %i ticks (%.1f ns)" % (min(residualOffsets), min(residualOffsets)*(1e9/fS))
-    print "Maximum Residual: %i ticks (%.1f ns)" % (max(residualOffsets), max(residualOffsets)*(1e9/fS))
+    print("Minimum Residual: %i ticks (%.1f ns)" % (min(residualOffsets), min(residualOffsets)*(1e9/fS)))
+    print("Maximum Residual: %i ticks (%.1f ns)" % (max(residualOffsets), max(residualOffsets)*(1e9/fS)))
     if not args.yes:
         out = raw_input('=> Accept? [Y/n] ')
         if out == 'n' or out == 'N':
             sys.exit()
     else:
-        print "=> Accepted via the command line"
-    print " "
+        print("=> Accepted via the command line")
+    print(" ")
     
     # Setup the processing constraints
     if (not args.no_summing):
@@ -268,16 +280,16 @@ def main(args):
         beam = idf.get_info('beam')
         
         # File summary
-        print "Input Filename: %s (%i of %i)" % (filename, c+1, len(args.filename))
-        print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
-        print "Tune/Pols: %i" % tunepol
-        print "Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2)
-        print "Sample Rate: %i Hz" % srate
-        print "Sample Time: %f s" % (LFFT/srate,)
-        print "Sub-block Time: %f s" % (LFFT/srate*nsblk,)
-        print "Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol)
-        print "---"
-        print "Using FFTW Wisdom? %s" % useWisdom
+        print("Input Filename: %s (%i of %i)" % (filename, c+1, len(args.filename)))
+        print("Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd))
+        print("Tune/Pols: %i" % tunepol)
+        print("Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2))
+        print("Sample Rate: %i Hz" % srate)
+        print("Sample Time: %f s" % (LFFT/srate,))
+        print("Sub-block Time: %f s" % (LFFT/srate*nsblk,))
+        print("Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol))
+        print("---")
+        print("Using FFTW Wisdom? %s" % useWisdom)
         
         # Create the output PSRFITS file(s)
         pfu_out = []

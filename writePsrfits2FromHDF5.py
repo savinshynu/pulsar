@@ -5,6 +5,13 @@
 Given an HDF5 file from drspec2hdf.py, create one of more PSRFITS file(s).
 """
 
+# Python3 compatiability
+from __future__ import print_function, division
+import sys
+if sys.version_info > (3,):
+    xrange = range
+    raw_input = input
+    
 import os
 import sys
 import h5py
@@ -24,11 +31,16 @@ from _psr import ComputePseudoSKMask, OptimizeDataLevels8Bit, OptimizeDataLevels
 
 
 def resolveTarget(name):
-    import urllib
+    try:
+        from urllib2 import urlopen
+        from urllib import urlencode, quote_plus
+    except ImportError:
+        from urllib.request import urlopen
+        from urllib.parse import urlencode, quote_plus
     from xml.etree import ElementTree
     
     try:
-        result = urllib.urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % urllib.quote_plus(name))
+        result = urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % quote_plus(name))
         tree = ElementTree.fromstring(result.read())
         target = tree.find('Target')
         service = target.find('Resolver')
@@ -63,8 +75,8 @@ def main(args):
             ## Save
             args.source = sourceName
             
-        except Exception, e:
-            print "WARNING: Could not load source name from file"
+        except Exception as e:
+            print("WARNING: Could not load source name from file")
             
     if args.ra is None or args.dec is None:
         try:
@@ -85,14 +97,14 @@ def main(args):
             args.ra = '%02d:%02d:%04.1f' % (int(ra), int(ra * 60) % 60, ra * 3600 % 60)
             args.dec = '%s%02d:%02d:%04.1f' % (decSign, int(dec), int(dec * 60) % 60, dec * 3600 % 60)
             
-        except Exception, e:
-            print "WARNING: Could not load source RA/dec. from file"
+        except Exception as e:
+            print("WARNING: Could not load source RA/dec. from file")
             
     # Find out where the source is if needed
     if args.source is not None:
         if args.ra is None or args.dec is None:
             tempRA, tempDec, tempService = resolveTarget('PSR '+args.source)
-            print "%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService)
+            print("%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService))
             out = raw_input('=> Accept? [Y/n] ')
             if out == 'n' or out == 'N':
                 sys.exit()
@@ -147,16 +159,16 @@ def main(args):
         args.output = "drx_%05d_%s" % (mjd_day, args.source.replace(' ', ''))
         
     # File summary
-    print "Input Filename: %s" % args.filename
-    print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
-    print "Beam: %i" % beam
-    print "Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2)
-    print "Sample Rate: %i Hz" % srate
-    print "Sample Time: %f s" % tInt
-    print "Sub-block Time: %f s" % (tInt*nsblk,)
-    print "Data Products: %s" % ','.join(data_products)
-    print "Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile)
-    print "---"
+    print("Input Filename: %s" % args.filename)
+    print("Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd))
+    print("Beam: %i" % beam)
+    print("Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2))
+    print("Sample Rate: %i Hz" % srate)
+    print("Sample Time: %f s" % tInt)
+    print("Sub-block Time: %f s" % (tInt*nsblk,))
+    print("Data Products: %s" % ','.join(data_products))
+    print("Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile))
+    print("---")
     
     # Create the output PSRFITS file(s)
     pfu_out = []
@@ -295,7 +307,7 @@ def main(args):
             jP = j + i*chunkSize
             try:
                 if obs1['time'][jP] > oTime + 1.001*tInt:
-                    print 'Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, obs1['time'][jP], oTime, tInt)
+                    print('Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, obs1['time'][jP], oTime, tInt))
             except NameError:
                 pass
             oTime = obs1['time'][jP]

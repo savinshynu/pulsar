@@ -5,6 +5,12 @@
 Given a collection of single pulse files from PRESTO, plot them in an interactive way.
 """
 
+# Python3 compatiability
+from __future__ import print_function, division
+import sys
+if sys.version_info > (3,):
+    xrange = range
+    
 import os
 import sys
 import math
@@ -83,7 +89,7 @@ def telescope2tempo(tel):
     try:
         return tempoObservatorCodes[tel.lower()]
     except KeyError:
-        print "WARNING: Unknown telescope '%s', default to geocenter" % tel
+        print("WARNING: Unknown telescope '%s', default to geocenter" % tel)
         return tempoObservatorCodes['geocenter']
 
 
@@ -143,7 +149,7 @@ TOA\n""" % (mjd, ra, dec))
     status = os.system('tempo bary.tmp > barycorr.out')
     if status != 0:
         ## This didn't work, skipping
-        print "WARNING: Could not run TEMPO, skipping conversion function calculation"
+        print("WARNING: Could not run TEMPO, skipping conversion function calculation")
         bary2topo = None
         
     else:
@@ -404,7 +410,7 @@ class SinglePulse_GUI(object):
         self._keyPressCache = {'1a':[], '1b':[], '1c':[], '2':[]}
         
     def loadData(self, filenames, threshold=5.0, timeRange=[0,numpy.inf], dmRange=[0,numpy.inf], widthRange=[0, numpy.inf], fitsname=None):
-        print "Loading %i files with a pulse S/N threshold of %.1f" % (len(filenames), threshold)
+        print("Loading %i files with a pulse S/N threshold of %.1f" % (len(filenames), threshold))
         tStart = time.time()
 
         # Save the filenames
@@ -412,7 +418,7 @@ class SinglePulse_GUI(object):
         self.fitsname = fitsname
         
         # Load the data
-        print "%6.3f s - Extracting pulses" % (time.time()-tStart,)
+        print("%6.3f s - Extracting pulses" % (time.time()-tStart,))
         data = []
         meta = []
         for filename in filenames:
@@ -436,14 +442,14 @@ class SinglePulse_GUI(object):
         self.meta = meta
         self.data = numpy.ma.array(data, mask=numpy.zeros(data.shape, dtype=numpy.bool))
         self.data.data[:,4] *= 1000.0*self.meta.dt	# Convert width from samples to time in ms
-        print "            -> Found %i pulses" % self.data.shape[0]
+        print("            -> Found %i pulses" % self.data.shape[0])
         
-        print "%6.3f s - Applying time, DM, and width cuts" % (time.time()-tStart,)
+        print("%6.3f s - Applying time, DM, and width cuts" % (time.time()-tStart,))
         valid = numpy.where( (self.data[:,2] >= timeRange[0] ) & (self.data[:,2] <= timeRange[1] ) & \
                         (self.data[:,0] >= dmRange[0]   ) & (self.data[:,0] <= dmRange[1]   ) & \
                         (self.data[:,4] >= widthRange[0]) & (self.data[:,4] <= widthRange[1])    )[0]
         self.data = self.data[valid,:]
-        print "            -> Downselected to %i pulses" % self.data.shape[0]
+        print("            -> Downselected to %i pulses" % self.data.shape[0])
         
         if self.data.shape[0] == 0:
             raise RuntimeError("No pulses found after apply time and DM cuts, exiting")
@@ -452,27 +458,27 @@ class SinglePulse_GUI(object):
         self.snrMin, self.snrMax = self.data[:,1].min(), self.data[:,1].max()
         self.tMin, self.tMax = self.data[:,2].min(), self.data[:,2].max()
         self.widthMin, self.widthMax = self.data[:,4].min(), self.data[:,4].max()
-        print "            -> DM range: %.3f to %.3f pc cm^-3" % (self.dmMin, self.dmMax)
-        print "            -> S/N range: %.1f to %.1f" % (self.snrMin, self.snrMax)
-        print "            -> Width range: %.3f to %.3f ms" % (self.widthMin, self.widthMax)
+        print("            -> DM range: %.3f to %.3f pc cm^-3" % (self.dmMin, self.dmMax))
+        print("            -> S/N range: %.1f to %.1f" % (self.snrMin, self.snrMax))
+        print("            -> Width range: %.3f to %.3f ms" % (self.widthMin, self.widthMax))
         
-        print "%6.3f s - Sorting pulses in time" % (time.time()-tStart,)
+        print("%6.3f s - Sorting pulses in time" % (time.time()-tStart,))
         order = numpy.argsort(self.data.data[:,2])
         for i in xrange(self.data.shape[1]):
             self.data[:,i] = self.data[order,i]
             
-        print "%6.3f s - Setting initial thresholds and plotting ranges" % (time.time()-tStart,)
+        print("%6.3f s - Setting initial thresholds and plotting ranges" % (time.time()-tStart,))
         self.dataThreshold = [threshold, self.widthMin, self.widthMax]
         tPad = (self.tMax - self.tMin) * 0.02
         dPad = (self.dmMax - self.dmMin) * 0.02
         self.dataWindow = [self.tMin-tPad, self.tMax+tPad, self.dmMin-dPad, self.dmMax+dPad]
-        print "            -> Minimum S/N: %.1f" % self.dataThreshold[0]
-        print "            -> Minimum width %.3f ms" % self.dataThreshold[1]
-        print "            -> Maximum width %.3f ms" % self.dataThreshold[2]
-        print "            -> Time window padding: %.1f s" % tPad
-        print "            -> DM window padding: %.3f pc cm^-3" % dPad
+        print("            -> Minimum S/N: %.1f" % self.dataThreshold[0])
+        print("            -> Minimum width %.3f ms" % self.dataThreshold[1])
+        print("            -> Maximum width %.3f ms" % self.dataThreshold[2])
+        print("            -> Time window padding: %.1f s" % tPad)
+        print("            -> DM window padding: %.3f pc cm^-3" % dPad)
         
-        print "%6.3f s - Setting default colorbar ranges" % (time.time() - tStart)
+        print("%6.3f s - Setting default colorbar ranges" % (time.time() - tStart))
         sMin, wMin, wMax = self.dataThreshold
         tLow, tHigh, dmLow, dmHigh = self.dataWindow
         valid = numpy.where( (self.data[:,2] >= tLow ) & (self.data[:,2] <= tHigh ) & \
@@ -484,7 +490,7 @@ class SinglePulse_GUI(object):
             self.limits[i] = findLimits(self.data[valid,i], usedB=False)
             
         if self.meta.bary and self.fitsname is not None:
-            print "%6.3f s - Determining barycentric to topocentic correction factors" % (time.time()-tStart)
+            print("%6.3f s - Determining barycentric to topocentic correction factors" % (time.time()-tStart))
             self.bary2topo = getBarycentricCorrectionFunction(self.fitsname)
         else:
             self.bary2topo = None
@@ -494,7 +500,7 @@ class SinglePulse_GUI(object):
         except:
             pass
             
-        print "%6.3f s - Finished preparing data" % (time.time() - tStart)
+        print("%6.3f s - Finished preparing data" % (time.time() - tStart))
         
     def getClosestPulse(self, t, dm):
         """
@@ -508,7 +514,7 @@ class SinglePulse_GUI(object):
         # Find the best match
         d = (self.data[valid,2]-t)**2 + (self.data[valid,0]-dm)**2
         best = valid[numpy.argmin(d)]
-        print '-> click at %.1f s, %.3f pc cm^-3 closest to pulse %i at %.1f, %.3f' % (t, dm, best, self.data[best,2], self.data[best,0])
+        print('-> click at %.1f s, %.3f pc cm^-3 closest to pulse %i at %.1f, %.3f' % (t, dm, best, self.data[best,2], self.data[best,0]))
         
         return valid[numpy.argmin(d)]
         
@@ -911,14 +917,14 @@ class SinglePulse_GUI(object):
                 
             elif event.button == 2:
                 ## Unmask
-                print "Unmasking pulse at %.3f s, %.3f pc cm-3" % (self.data[best,2], self.data[best,0])
+                print("Unmasking pulse at %.3f s, %.3f pc cm-3" % (self.data[best,2], self.data[best,0]))
                 self.data.mask[best,:] = False
                 
                 self.draw(recompute=True)
                 
             elif event.button == 3:
                 ## Mask
-                print "Masking pulse at %.3f s, %.3f pc cm-3" % (self.data[best,2], self.data[best,0])
+                print("Masking pulse at %.3f s, %.3f pc cm-3" % (self.data[best,2], self.data[best,0]))
                 self.data.mask[best,:] = True
                 
                 self.draw(recompute=True)
@@ -943,14 +949,14 @@ class SinglePulse_GUI(object):
                     
             elif event.button == 2:
                 ## Unmask
-                print "Unmasking pulse at %.3f s, %.3f pc cm-3" % (self.data[best,2], self.data[best,0])
+                print("Unmasking pulse at %.3f s, %.3f pc cm-3" % (self.data[best,2], self.data[best,0]))
                 self.data.mask[best,:] = False
                 
                 self.draw(recompute=True)
                 
             elif event.button == 3:
                 ## Mask
-                print "Masking pulse at %.3f s, %.3f pc cm-3" % (self.data[best,2], self.data[best,0])
+                print("Masking pulse at %.3f s, %.3f pc cm-3" % (self.data[best,2], self.data[best,0]))
                 self.data.mask[best,:] = True
                 
                 self.draw(recompute=True)
@@ -971,35 +977,35 @@ class SinglePulse_GUI(object):
             
             if event.key == 'h':
                 ## Help
-                print "Pulse Window Keys:"
-                print "  p - print the information about the underlying pulse"
-                print "  e - export the current pulses to a file"
-                print "  s - display a DM time slice"
-                print "  w - display the PSRFITS waterfall for a pulse"
-                print "  u - unmask pulses in a region of time"
-                print "  m - mask pulses in a region of time"
-                print "  y - unmask pulses in a region of time/DM"
-                print "  n - mask pulses in a region of time/DM"
-                print "  t - unmask pulses in a region of DM"
-                print "  b - mask pulses in a region of DM"
-                print "  h - print this help message"
+                print("Pulse Window Keys:")
+                print("  p - print the information about the underlying pulse")
+                print("  e - export the current pulses to a file")
+                print("  s - display a DM time slice")
+                print("  w - display the PSRFITS waterfall for a pulse")
+                print("  u - unmask pulses in a region of time")
+                print("  m - mask pulses in a region of time")
+                print("  y - unmask pulses in a region of time/DM")
+                print("  n - mask pulses in a region of time/DM")
+                print("  t - unmask pulses in a region of DM")
+                print("  b - mask pulses in a region of DM")
+                print("  h - print this help message")
                 
             elif event.key == 'p':
                 ## Print
                 ### Recenter first
                 self.makeMark(self.data[best,2], self.data[best,0])
                 
-                print "Time: %.3f s" % self.data.data[best,2]
-                print "DM: %.3f pc cm^-3" % self.data.data[best,0]
-                print "S/N: %.2f" % self.data.data[best,1]
-                print "Width: %.3f ms" % self.data.data[best,4]
-                print "Flagged? %s" % self.data.mask[best,0]
-                print "==="
+                print("Time: %.3f s" % self.data.data[best,2])
+                print("DM: %.3f pc cm^-3" % self.data.data[best,0])
+                print("S/N: %.2f" % self.data.data[best,1])
+                print("Width: %.3f ms" % self.data.data[best,4])
+                print("Flagged? %s" % self.data.mask[best,0])
+                print("===")
                 
             elif event.key == 'e':
                 ## Write
                 outname = "plotSinglePulse.export"
-                print "Saving to '%s'" % outname
+                print("Saving to '%s'" % outname)
                 
                 ### Select the valid data
                 sMin, wMin, wMax = self.dataThreshold
@@ -1032,7 +1038,7 @@ class SinglePulse_GUI(object):
                     fh.write("%6.4f  %5.2f  %11.4f  %6i  %6i\n" % entry)
                 fh.close()
                 
-                print "-> Done writing %i entries" % len(valid)
+                print("-> Done writing %i entries" % len(valid))
                 
             elif event.key == 's':
                 ## Time slice window
@@ -1049,7 +1055,7 @@ class SinglePulse_GUI(object):
                     
                     WaterfallDisplay(self.frame, self.fitsname, self.data[best,2], self.data[best,0], self.data[best,4])
                 else:
-                    print "No PSRFITS file specified, skipping"
+                    print("No PSRFITS file specified, skipping")
                 
             elif event.key == 'u':
                 ## Mask a time range
@@ -1064,7 +1070,7 @@ class SinglePulse_GUI(object):
                             temp = t0
                             t0 = t1
                             t1 = temp
-                        print "Unmasking from %.3f to %.3f s" % (t0, t1)
+                        print("Unmasking from %.3f to %.3f s" % (t0, t1))
                         try:
                             toMask = self.selectTimeRange(t0, d0, t1, d1)
                             
@@ -1072,12 +1078,12 @@ class SinglePulse_GUI(object):
                             
                             self.draw(recompute=True)
                             
-                        except Exception, e:
+                        except Exception as e:
                             pass
                             
                         self._keyPressCache['2'] = []
                 elif len(self._keyPressCache['2']) == 1:
-                    print "Move the cursor to the other side of the time region to unmask and push 'u'"
+                    print("Move the cursor to the other side of the time region to unmask and push 'u'")
                     
             elif event.key == 'm':
                 ## Mask a time range
@@ -1092,7 +1098,7 @@ class SinglePulse_GUI(object):
                             temp = t0
                             t0 = t1
                             t1 = temp
-                        print "Masking from %.3f to %.3f s" % (t0, t1)
+                        print("Masking from %.3f to %.3f s" % (t0, t1))
                         try:
                             toMask = self.selectTimeRange(t0, d0, t1, d1)
                             
@@ -1100,13 +1106,13 @@ class SinglePulse_GUI(object):
                             
                             self.draw(recompute=True)
                             
-                        except Exception, e:
+                        except Exception as e:
                             pass
                             
                         self._keyPressCache['2'] = []
                         
                 elif len(self._keyPressCache['2']) == 1:
-                    print "Move the cursor to the other side of the time region to mask and push 'm'"
+                    print("Move the cursor to the other side of the time region to mask and push 'm'")
                     
             elif event.key == 'y':
                 ## Mask a time range
@@ -1121,7 +1127,7 @@ class SinglePulse_GUI(object):
                             temp = t0
                             t0 = t1
                             t1 = temp
-                        print "Unmasking from %.3f s, %.3f pc cm^-3 to %.3f s, %.3f pc cm^-3" % (t0, d0, t1, d1)
+                        print("Unmasking from %.3f s, %.3f pc cm^-3 to %.3f s, %.3f pc cm^-3" % (t0, d0, t1, d1))
                         try:
                             toMask = self.selectTimeDMRange(t0, d0, t1, d1)
                             
@@ -1129,12 +1135,12 @@ class SinglePulse_GUI(object):
                             
                             self.draw(recompute=True)
                             
-                        except Exception, e:
+                        except Exception as e:
                             pass
                             
                         self._keyPressCache['2'] = []
                 elif len(self._keyPressCache['2']) == 1:
-                    print "Move the cursor to the other corner of the time/DM region to unmask and push 'y'"
+                    print("Move the cursor to the other corner of the time/DM region to unmask and push 'y'")
                     
             elif event.key == 'n':
                 ## Mask a time range
@@ -1153,7 +1159,7 @@ class SinglePulse_GUI(object):
                             temp = d0
                             d0 = d1
                             d1 = temp
-                        print "Masking from %.3f s, %.3f pc cm^-3 to %.3f s, %.3f pc cm^-3" % (t0, d0, t1, d1)
+                        print("Masking from %.3f s, %.3f pc cm^-3 to %.3f s, %.3f pc cm^-3" % (t0, d0, t1, d1))
                         try:
                             toMask = self.selectTimeDMRange(t0, d0, t1, d1)
                             
@@ -1161,12 +1167,12 @@ class SinglePulse_GUI(object):
                             
                             self.draw(recompute=True)
                             
-                        except Exception, e:
+                        except Exception as e:
                             pass
                             
                         self._keyPressCache['2'] = []
                 elif len(self._keyPressCache['2']) == 1:
-                    print "Move the cursor to the other corner of the time/DM region to mask and push 'n'"
+                    print("Move the cursor to the other corner of the time/DM region to mask and push 'n'")
                     
             elif event.key == 't':
                 ## Mask a time range
@@ -1181,7 +1187,7 @@ class SinglePulse_GUI(object):
                             temp = d0
                             d0 = d1
                             d1 = temp
-                        print "Unmasking from %.3f to %.3f s" % (t0, t1)
+                        print("Unmasking from %.3f to %.3f s" % (t0, t1))
                         try:
                             toMask = self.selectDMRange(t0, d0, t1, d1)
                             
@@ -1189,12 +1195,12 @@ class SinglePulse_GUI(object):
                             
                             self.draw(recompute=True)
                             
-                        except Exception, e:
+                        except Exception as e:
                             pass
                             
                         self._keyPressCache['2'] = []
                 elif len(self._keyPressCache['2']) == 1:
-                    print "Move the cursor to the other side of the DM region to unmask and push 't'"
+                    print("Move the cursor to the other side of the DM region to unmask and push 't'")
                     
             elif event.key == 'b':
                 ## Mask a time range
@@ -1209,7 +1215,7 @@ class SinglePulse_GUI(object):
                             temp = d0
                             d0 = d1
                             d1 = temp
-                        print "Masking from %.3f to %.3f s" % (t0, t1)
+                        print("Masking from %.3f to %.3f s" % (t0, t1))
                         try:
                             toMask = self.selectDMRange(t0, d0, t1, d1)
                             
@@ -1217,13 +1223,13 @@ class SinglePulse_GUI(object):
                             
                             self.draw(recompute=True)
                             
-                        except Exception, e:
+                        except Exception as e:
                             pass
                             
                         self._keyPressCache['2'] = []
                         
                 elif len(self._keyPressCache['2']) == 1:
-                    print "Move the cursor to the other side of the DM region to mask and push 'b'"
+                    print("Move the cursor to the other side of the DM region to mask and push 'b'")
                     
             else:
                 pass
@@ -2056,7 +2062,7 @@ class DecimationAdjust(wx.Frame):
         t0 = time.time()
         self.parent.data.draw(recompute=True)
         t1 = time.time()
-        print "-> Drawing time with %i points is %.3f s" % (self.parent.data.maxPoints, t1-t0)
+        print("-> Drawing time with %i points is %.3f s" % (self.parent.data.maxPoints, t1-t0))
         
     def onUpperIncrease(self, event):
         self.parent.data.maxPoints += 1000
@@ -2065,7 +2071,7 @@ class DecimationAdjust(wx.Frame):
         t0 = time.time()
         self.parent.data.draw(recompute=True)
         t1 = time.time()
-        print "-> Drawing time with %i points is %.3f s" % (self.parent.data.maxPoints, t1-t0)
+        print("-> Drawing time with %i points is %.3f s" % (self.parent.data.maxPoints, t1-t0))
         
     def onOk(self, event):
         needToRedraw = False
@@ -3436,7 +3442,7 @@ are disabled.
 The keyboard can also be used to interact with the lower plotting panel.  The keyboard commands 
 are:
 <ul>
-    <li>p - print the information about the underlying pulse</li>
+    <li>p - print(the information about the underlying pulse</li>)
     <li> e - export the current pulses to a file</li>
     <li>s - display a DM time slice</li>
     <li>w - display the PSRFITS waterfall for a pulse</li>
@@ -3477,7 +3483,7 @@ def main(args):
     try:
         import _helper
     except ImportError:
-        print "WARNING: _helper.so not found, consider building it with 'make'"
+        print("WARNING: _helper.so not found, consider building it with 'make'")
         
     # Go!
     app = wx.App(0)

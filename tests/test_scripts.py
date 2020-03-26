@@ -43,8 +43,11 @@ _SAFE_TO_IGNORE = ["Module 'numpy",
                    "Module 'ephem",
                    "Module 'wx",
                    "Unable to import 'wx",
+                   "Module 'infodata",
+                   "Unable to import 'infodata",
                    "No name 'erf' in module 'scipy.special'",
-                   "Instance of 'HDUList' has no 'header' member"]
+                   "Instance of 'HDUList' has no 'header' member",
+                   "Instance of 'HDUList' has no 'data' member"]
 
 
 @unittest.skipUnless(run_scripts_tests, "requires the 'pylint' module")
