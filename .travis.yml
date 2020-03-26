@@ -47,7 +47,9 @@ before_script:
 
 script:
     - make
-    - cd tests
+    - export LPE=`pwd`
     - export PFU=`ls -d ${HOME}/local/lib/python*/site-packages/psrfits_utils | head -n1`
-    - export LD_LIBRARY_PATH=${HOME}/local/lib:${PFU}:..:${LD_LIBRARY_PATH}
+    - cd tests
+    - export LD_LIBRARY_PATH=${HOME}/local/lib:${PFU}:${LPE}:${LD_LIBRARY_PATH}
+    - export PYTHONPATH=${LPE}:${PYTHONPATH}
     - python -m unittest discover
