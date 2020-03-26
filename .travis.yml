@@ -49,5 +49,5 @@ script:
     - make
     - cd tests
     - export PFU=`ls -d ${HOME}/local/lib/python*/site-packages/psrfits_utils | head -n1`
-    - export LD_LIBRARY_PATH=${HOME}/local/lib:${PFU}:${LD_LIBRARY_PATH}
+    - export LD_LIBRARY_PATH=${HOME}/local/lib:${PFU}:..:${LD_LIBRARY_PATH}
     - python -m unittest discover
