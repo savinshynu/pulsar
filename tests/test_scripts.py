@@ -45,6 +45,8 @@ _SAFE_TO_IGNORE = ["Module 'numpy",
                    "Unable to import 'wx",
                    "Module 'infodata",
                    "Unable to import 'infodata",
+                   "Module 'residuals",
+                   "Unable to import 'residuals",
                    "No name 'erf' in module 'scipy.special'",
                    "Instance of 'HDUList' has no 'header' member",
                    "Instance of 'HDUList' has no 'data' member"]
@@ -95,6 +97,7 @@ if run_scripts_tests:
         path.append('*.py')
         _SCRIPTS.extend(glob.glob(os.path.join(*path)))
     _SCRIPTS = list(filter(lambda x: x.find('test_scripts.py') == -1, _SCRIPTS))
+    _SCRIPTS = list(filter(lambda x: x.find('psrfits_utils') == -1, _SCRIPTS))
     _SCRIPTS.sort()
     for script in _SCRIPTS:
         test = _test_generator(script)

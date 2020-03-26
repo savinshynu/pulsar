@@ -18,7 +18,7 @@ addons:
             - pkg-config
             - software-properties-common
             - python-dev
-            - python3-dev
+            - python3.6-dev
             - libfftw3-dev
             - libgdbm-dev
             - libhdf5-dev
@@ -51,5 +51,5 @@ script:
     - export PFU=`ls -d ${HOME}/local/lib/python*/site-packages/psrfits_utils | head -n1`
     - cd tests
     - export LD_LIBRARY_PATH=${HOME}/local/lib:${PFU}:${LPE}:${LD_LIBRARY_PATH}
-    - export PYTHONPATH=${LPE}:${PYTHONPATH}
+    - export PYTHONPATH=${LPE}:${PFU}:${PYTHONPATH}
     - python -m unittest discover
