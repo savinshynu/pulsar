@@ -26,7 +26,7 @@ import lsl.astro as astro
 import lsl.common.progress as progress
 from lsl.common.dp import fS
 from lsl.statistics import kurtosis
-from lsl.misc.dedispersion import getCoherentSampleSize
+from lsl.misc.dedispersion import get_coherent_sample_size
 from lsl.misc import parser as aph
 
 from _psr import *
@@ -180,7 +180,7 @@ def main(args):
     print "---"
     print "Using FFTW Wisdom? %s" % useWisdom
     print "DM: %.4f pc / cm^3" % DM
-    print "Samples Needed: %i, %i to %i, %i" % (getCoherentSampleSize(central_freq1-srate/2, 1.0*srate/LFFT, DM), getCoherentSampleSize(central_freq2-srate/2, 1.0*srate/LFFT, DM), getCoherentSampleSize(central_freq1+srate/2, 1.0*srate/LFFT, DM), getCoherentSampleSize(central_freq2+srate/2, 1.0*srate/LFFT, DM))
+    print "Samples Needed: %i, %i to %i, %i" % (get_coherent_sample_size(central_freq1-srate/2, 1.0*srate/LFFT, DM), get_coherent_sample_size(central_freq2-srate/2, 1.0*srate/LFFT, DM), get_coherent_sample_size(central_freq1+srate/2, 1.0*srate/LFFT, DM), get_coherent_sample_size(central_freq2+srate/2, 1.0*srate/LFFT, DM))
     
     # Create the output PSRFITS file(s)
     pfu_out = []
@@ -207,9 +207,9 @@ def main(args):
         OptimizeDataLevels = OptimizeDataLevels8Bit
         
     # Parameter validation
-    if getCoherentSampleSize(central_freq1-srate/2, 1.0*srate/LFFT, DM) > nsblk:
+    if get_coherent_sample_size(central_freq1-srate/2, 1.0*srate/LFFT, DM) > nsblk:
         raise RuntimeError("Too few samples for coherent dedispersion.  Considering increasing the number of channels.")
-    elif getCoherentSampleSize(central_freq2-srate/2, 1.0*srate/LFFT, DM) > nsblk:
+    elif get_coherent_sample_size(central_freq2-srate/2, 1.0*srate/LFFT, DM) > nsblk:
         raise RuntimeError("Too few samples for coherent dedispersion.  Considering increasing the number of channels.")
         
     # Adjust the time for the padding used for coherent dedispersion

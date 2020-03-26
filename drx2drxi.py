@@ -64,7 +64,7 @@ class RawDRXFrame(object):
         return tNom
 
 
-class RawDRXFrameBuffer(buffer.FrameBuffer):
+class RawDRXFrameBuffer(buffer.FrameBufferBase):
     """
     A sub-type of FrameBuffer specifically for dealing with raw (packed) DRX 
     frames.  See :class:`lsl.reader.buffer.FrameBuffer` for a description of 

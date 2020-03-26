@@ -13,8 +13,8 @@ import numpy
 import ephem
 import ctypes
 import getopt
-import pyfits
 from datetime import datetime
+from astropy.io import fits as astrofits
 
 import data as hdfData
 
@@ -92,7 +92,7 @@ def main(args):
     # Open the file and load in basic information about the observation's goal
     for c,filename in enumerate(filenames):
         ## Ready the PSRFITS file
-        hdulist = pyfits.open(filename, memmap=True)
+        hdulist = astrofits.open(filename, memmap=True)
         
         ## Try to find out the beam/tuning
         mtch = _fnRE.search(filename)

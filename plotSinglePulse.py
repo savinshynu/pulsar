@@ -11,7 +11,6 @@ import math
 import time
 import numpy
 import ephem
-import pyfits
 import argparse
 import subprocess
 from datetime import datetime
@@ -19,6 +18,7 @@ from multiprocessing import Pool
 from scipy.special import erf
 from scipy.interpolate import interp1d
 from scipy.stats import scoreatpercentile as percentile, skew, kurtosis
+from astropy.io import fits as astrofits
 
 from infodata import infodata
 from residuals import read_residuals
@@ -97,7 +97,7 @@ def getBarycentricCorrectionFunction(fitsname):
     """
     
     # Open the file and read in the metadata
-    hdulist = pyfits.open(fitsname, mode='readonly', memmap=True)
+    hdulist = astrofits.open(fitsname, mode='readonly', memmap=True)
     ## Observatory and start time
     obs = telescope2tempo(hdulist[0].header['TELESCOP'])
     mjd = hdulist[0].header['STT_IMJD'] + (hdulist[0].header['STT_SMJD'] + hdulist[0].header['STT_OFFS'])/86400.0
@@ -2734,7 +2734,7 @@ class WaterfallDisplay(wx.Frame):
         Compute and save everything needed for the plot.
         """
         
-        hdulist = pyfits.open(self.fitsname, mode='readonly', memmap=True)
+        hdulist = astrofits.open(self.fitsname, mode='readonly', memmap=True)
                     
         ## File specifics
         epoch = float(hdulist[0].header['EQUINOX'])

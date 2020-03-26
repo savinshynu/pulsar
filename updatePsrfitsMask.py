@@ -4,8 +4,8 @@
 import os
 import sys
 import numpy
-import pyfits
 import argparse
+from astropy.io import fits as astrofits
 
 import lsl.common.progress as progress
 from lsl.statistics import robust, kurtosis
@@ -35,7 +35,7 @@ def main(args):
         print "Working on '%s'..." % os.path.basename(filename)
         
         # Open the PRSFITS file
-        hdulist = pyfits.open(filename, mode='update', memmap=True)
+        hdulist = astrofits.open(filename, mode='update', memmap=True)
         
         # Figure out the integration time per sub-integration so we know how 
         # many sections to work with at a time
