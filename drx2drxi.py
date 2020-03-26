@@ -53,7 +53,7 @@ class RawDRXFrame(object):
         
     @property
     def timetag(self):
-        time_tag = 0L
+        time_tag = 0
         time_tag |= self.contents[16] << 56
         time_tag |= self.contents[17] << 48
         time_tag |= self.contents[18] << 40

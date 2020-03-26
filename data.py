@@ -95,7 +95,7 @@ class HDFFileWrapper(h5py.File):
     
     def __init__(self, name, mode=None, driver=None, libver=None, userblock_size=None, **kwds):
         super(HDFFileWrapper, self).__init__(name, mode=mode, driver=driver, libver=libver, userblock_size=userblock_size, **kwds)
-    self.alt_filename = self.filename  # We need to store this because it
+        self.alt_filename = self.filename  # We need to store this because it
                                        # disappears when close() is called
         _open_hdf_files.add(self)
         
