@@ -19,7 +19,7 @@ import os
 
 currentDir = os.path.abspath(os.getcwd())
 if os.path.exists(os.path.join(currentDir, 'test_scripts.py')):
-    MODULE_BUILD = currentDir
+    MODULE_BUILD = os.path.join(currentDir, '..')
 else:
     MODULE_BUILD = None
     
@@ -54,7 +54,7 @@ def _test_generator(script):
     """
     
     def test(self):
-        out, err = lint.py_run("%s -E" % script, return_std=True)
+        out, err = lint.py_run("%s -E --init-hook='import sys; sys.path=[%s]; sys.path.insert(0, \"%s\")'" % (script, ",".join(['"%s"' % p for p in sys.path]), os.path.dirname(MODULE_BUILD)), return_std=True)
         out_lines = out.read().split('\n')
         err_lines = err.read().split('\n')
         out.close()
@@ -72,7 +72,7 @@ def _test_generator(script):
 
 
 if run_scripts_tests:
-    _SCRIPTS = glob.glob(os.path.join(MODULE_BUILD, '..', '*.py'))
+    _SCRIPTS = glob.glob(os.path.join(MODULE_BUILD, '*.py'))
     for depth in range(1, 3):
         path = [MODULE_BUILD, '..']
         path.extend(['*',]*depth)
