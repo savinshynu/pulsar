@@ -39,6 +39,14 @@ __author__   = "Jayce Dowell"
 _LINT_RE = re.compile('(?P<module>.*?)\:(?P<line>\d+)\: (error )?[\[\(](?P<type>.*?)[\]\)] (?P<info>.*)')
 
 
+_SAFE_TO_IGNORE = ["Module 'numpy",
+                   "Module 'ephem",
+                   "Module 'wx",
+                   "Unable to import 'wx",
+                   "No name 'erf' in module 'scipy.special'",
+                   "Instance of 'HDUList' has no 'header' member"]
+
+
 @unittest.skipUnless(run_scripts_tests, "requires the 'pylint' module")
 class scripts_tests(unittest.TestCase):
     """A unittest.TestCase collection of unit tests for the pulsar scripts."""
@@ -61,7 +69,12 @@ def _test_generator(script):
         err.close()
         
         for line in out_lines:
-            if line.find("Module 'numpy") != -1:
+            ignore = False
+            for phrase in _SAFE_TO_IGNORE:
+                if line.find(phrase) != -1:
+                    ignore = True
+                    break
+            if ignore:
                 continue
                 
             mtch = _LINT_RE.match(line)
@@ -76,7 +89,7 @@ if run_scripts_tests:
     for depth in range(1, 3):
         path = [MODULE_BUILD, '..']
         path.extend(['*',]*depth)
-	path.append('*.py')
+        path.append('*.py')
         _SCRIPTS.extend(glob.glob(os.path.join(*path)))
     _SCRIPTS = list(filter(lambda x: x.find('test_scripts.py') == -1, _SCRIPTS))
     _SCRIPTS.sort()
