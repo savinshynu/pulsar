@@ -53,21 +53,21 @@ class RawDRXFrame(object):
         
     @property
     def timetag(self):
-        timetag = 0L
-        timetag |= self.contents[16] << 56
-        timetag |= self.contents[17] << 48
-        timetag |= self.contents[18] << 40
-        timetag |= self.contents[19] << 32
-        timetag |= self.contents[20] << 24
-        timetag |= self.contents[21] << 16
-        timetag |= self.contents[22] <<  8
-        timetag |= self.contents[23]
-        return timetag
+        time_tag = 0L
+        time_tag |= self.contents[16] << 56
+        time_tag |= self.contents[17] << 48
+        time_tag |= self.contents[18] << 40
+        time_tag |= self.contents[19] << 32
+        time_tag |= self.contents[20] << 24
+        time_tag |= self.contents[21] << 16
+        time_tag |= self.contents[22] <<  8
+        time_tag |= self.contents[23]
+        return time_tag
         
     @property
     def tNom(self):
-        tNom = (self.contents[14] << 8) | self.contents[15]
-        return tNom
+        t_nom = (self.contents[14] << 8) | self.contents[15]
+        return t_nom
 
 
 class RawDRXFrameBuffer(buffer.FrameBufferBase):
