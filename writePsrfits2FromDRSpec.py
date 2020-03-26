@@ -28,7 +28,7 @@ import lsl.common.progress as progress
 from lsl.statistics import robust, kurtosis
 from lsl.misc import parser as aph
 
-from _psr import ComputePseudoSKMask, OptimizeDataLevels8Bit, OptimizeDataLevels4Bit
+from _psr import *
 
 
 def resolveTarget(name):

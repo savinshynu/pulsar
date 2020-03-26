@@ -24,6 +24,7 @@ from multiprocessing import Pool
 from scipy.special import erf
 from scipy.interpolate import interp1d
 from scipy.stats import scoreatpercentile as percentile, skew, kurtosis
+from scipy.signal import savgol_filter as savitzky_golay
 from astropy.io import fits as astrofits
 
 from infodata import infodata
@@ -32,7 +33,7 @@ from residuals import read_residuals
 import lsl
 from lsl import astro
 from lsl.misc.dedispersion import _D, delay, incoherent
-from lsl.misc.mathutil import to_dB, from_dB, savitzky_golay
+from lsl.misc.mathutil import to_dB, from_dB
 from lsl.misc import parser as aph
 
 import wx

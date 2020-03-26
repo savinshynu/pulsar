@@ -35,6 +35,7 @@ install:
         h5py
     - pip install git+https://github.com/lwa-project/lsl.git
     - pip install pylint
+    - make
 
 before_script:
     - git clone https://github.com/lwa-project/psrfits_utils.git
@@ -46,10 +47,9 @@ before_script:
     - cd ..
 
 script:
-    - make
     - export LPE=`pwd`
     - export PFU=`ls -d ${HOME}/local/lib/python*/site-packages/psrfits_utils | head -n1`
-    - cd tests
     - export LD_LIBRARY_PATH=${HOME}/local/lib:${PFU}:${LPE}:${LD_LIBRARY_PATH}
     - export PYTHONPATH=${LPE}:${PFU}:${PYTHONPATH}
+    - cd tests
     - python -m unittest discover
