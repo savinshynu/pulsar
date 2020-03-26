@@ -81,15 +81,32 @@ See the inidividual functions for more details.");
 
 PyMODINIT_FUNC init_psr(void) {
 	char filename[256];
-	PyObject *m, *pModule, *pDataPath;
+	PyObject *m, *all, *pModule, *pDataPath;
 
 	// Module definitions and functions
 	m = Py_InitModule3("_psr", SpecMethods, spec_doc);
 	import_array();
 	
-	// Version and revision information
+	// Version information
 	PyModule_AddObject(m, "__version__", PyString_FromString("0.6"));
-	PyModule_AddObject(m, "__revision__", PyString_FromString("$Rev$"));
+	
+	// Function listings
+	all = PyList_New(0);
+	PyList_Append(all, PyString_FromString("BindToCore"));
+	PyList_Append(all, PyString_FromString("BindOpenMPToCores"));
+	PyList_Append(all, PyString_FromString("PulsarEngineRaw"));
+	PyList_Append(all, PyString_FromString("PulsarEngineRawWindow"));
+	PyList_Append(all, PyString_FromString("PhaseRotator"));
+	PyList_Append(all, PyString_FromString("ComputeSKMask"));
+	PyList_Append(all, PyString_FromString("ComputePseudoSKMask"));
+	PyList_Append(all, PyString_FromString("MultiChannelCD"));
+	PyList_Append(all, PyString_FromString("CombineToIntensity"));
+	PyList_Append(all, PyString_FromString("CombineToLinear"));
+	PyList_Append(all, PyString_FromString("CombineToCircular"));
+	PyList_Append(all, PyString_FromString("CombineToStokes"));
+	PyList_Append(all, PyString_FromString("OptimizeDataLevels8Bit"));
+	PyList_Append(all, PyString_FromString("OptimizeDataLevels4Bit"));
+	PyModule_AddObject(m, "__all__", all);
 	
 	// LSL FFTW Wisdom
 	pModule = PyImport_ImportModule("lsl.common.paths");

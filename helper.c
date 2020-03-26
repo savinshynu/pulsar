@@ -781,14 +781,24 @@ parallel.  See the individual functions for more details.");
 */
 
 PyMODINIT_FUNC init_helper(void) {
-	PyObject *m;
+	PyObject *m, *all;
 
 	// Module definitions and functions
 	m = Py_InitModule3("_helper", HelperMethods, helper_doc);
 	import_array();
 	
-	// Version and revision information
+	// Version information
 	PyModule_AddObject(m, "__version__", PyString_FromString("0.1"));
-	PyModule_AddObject(m, "__revision__", PyString_FromString("$Rev$"));
+	
+	// Function listings
+	all = PyList_New(0);
+	PyList_Append(all, PyString_FromString("FastAxis0MinMax"));
+	PyList_Append(all, PyString_FromString("FastHistogram"));
+	PyList_Append(all, PyString_FromString("FastAxis0Mean"));
+	PyList_Append(all, PyString_FromString("FastAxis1MinMax"));
+	PyList_Append(all, PyString_FromString("FastAxis0Bandpass"));
+	PyList_Append(all, PyString_FromString("FastAxis0Median"));
+	PyList_Append(all, PyString_FromString("FastAxis1Percentiles5And99"));
+	PyModule_AddObject(m, "__all__", all);
 	
 }

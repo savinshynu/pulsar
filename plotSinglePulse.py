@@ -42,7 +42,6 @@ from matplotlib import cm
 from matplotlib.figure import Figure
 
 __version__ = "0.1"
-__revision__ = "$Rev: 3039 $"
 __author__ = "Jayce Dowell"
 
 
