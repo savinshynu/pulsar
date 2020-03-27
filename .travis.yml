@@ -26,6 +26,11 @@ addons:
             - swig
             - libcfitsio-dev
 
+before_install:
+    - sudo add-apt-repository -y ppa:jonathonf/python-3.6
+    - sudo apt-get -q update
+    - sudo apt-get -y install python3.6
+
 install:
     - pip install \
         setuptools \
@@ -35,12 +40,6 @@ install:
         h5py
     - pip install git+https://github.com/lwa-project/lsl.git
     - pip install pylint
-    - export LIBRARY_PATH=`find ${HOME} -type d -name lib\* -printf '%p:'`:${LIBRARY_PATH}
-    - python-config --cflags
-    - python-config --ldflags
-    - python-config --libs
-    - echo ${LIBRARY_PATH}
-    - find ${HOME} -name libpython\*
     - make
 
 before_script:
