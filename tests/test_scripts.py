@@ -39,7 +39,8 @@ __author__   = "Jayce Dowell"
 _LINT_RE = re.compile('(?P<module>.*?)\:(?P<line>\d+)\: (error )?[\[\(](?P<type>.*?)[\]\)] (?P<info>.*)')
 
 
-_SAFE_TO_IGNORE = ["Module 'numpy",
+_SAFE_TO_IGNORE = ["Possible",
+                   "Module 'numpy",
                    "Module 'ephem",
                    "Module 'wx",
                    "Unable to import 'wx",
@@ -63,7 +64,8 @@ _SAFE_TO_IGNORE = ["Module 'numpy",
                    "Undefined variable 'CombineToCircular",
                    "Undefined variable 'CombineToStokes",
                    "Undefined variable 'OptimizeDataLevels8Bit",
-                   "Undefined variable 'OptimizeDataLevels4Bit"]
+                   "Undefined variable 'OptimizeDataLevels4Bit"
+                   "Undefined variable 'useWisdom'"]
 
 
 def _get_context(filename, line, before=0, after=0):

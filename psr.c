@@ -106,12 +106,13 @@ PyMODINIT_FUNC init_psr(void) {
 	PyList_Append(all, PyString_FromString("CombineToStokes"));
 	PyList_Append(all, PyString_FromString("OptimizeDataLevels8Bit"));
 	PyList_Append(all, PyString_FromString("OptimizeDataLevels4Bit"));
+	PyList_Append(all, PyString_FromString("useWisdom"));
 	PyModule_AddObject(m, "__all__", all);
 	
 	// LSL FFTW Wisdom
 	pModule = PyImport_ImportModule("lsl.common.paths");
 	if( pModule != NULL ) {
-		pDataPath = PyObject_GetAttrString(pModule, "data");
+		pDataPath = PyObject_GetAttrString(pModule, "DATA");
 		sprintf(filename, "%s/fftw_wisdom.txt", PyString_AsString(pDataPath));
 		read_wisdom(filename, m);
 	} else {
