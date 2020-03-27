@@ -37,7 +37,8 @@ install:
     - pip install pylint
     - export LIBRARY_PATH=`find ${HOME} -type d -name lib\* -printf '%p:'`:${LIBRARY_PATH}
     - python-config --cflags
-    - python-config --ldfalgs
+    - python-config --ldflags
+    - python-config --libs
     - echo ${LIBRARY_PATH}
     - find ${HOME} -name libpython\*
     - make
