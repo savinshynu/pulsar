@@ -64,8 +64,8 @@ _SAFE_TO_IGNORE = ["Possible",
                    "Undefined variable 'CombineToCircular",
                    "Undefined variable 'CombineToStokes",
                    "Undefined variable 'OptimizeDataLevels8Bit",
-                   "Undefined variable 'OptimizeDataLevels4Bit"
-                   "Undefined variable 'useWisdom'"]
+                   "Undefined variable 'OptimizeDataLevels4Bit",
+                   "Undefined variable 'useWisdom"]
 
 
 def _get_context(filename, line, before=0, after=0):
