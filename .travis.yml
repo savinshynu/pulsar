@@ -35,6 +35,7 @@ install:
         h5py
     - pip install git+https://github.com/lwa-project/lsl.git
     - pip install pylint
+    - export LIBRARY_PATH=`find ${HOME} -type d -name lib\* -printf '%p:'`:${LIBRARY_PATH}
     - make
 
 before_script:
