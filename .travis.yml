@@ -36,6 +36,10 @@ install:
     - pip install git+https://github.com/lwa-project/lsl.git
     - pip install pylint
     - export LIBRARY_PATH=`find ${HOME} -type d -name lib\* -printf '%p:'`:${LIBRARY_PATH}
+    - python-config --cflags
+    - python-config --ldfalgs
+    - echo ${LIBRARY_PATH}
+    - find ${HOME} -name libpython\*
     - make
 
 before_script:
