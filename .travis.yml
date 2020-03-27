@@ -27,7 +27,7 @@ addons:
             - libcfitsio-dev
 
 before_install:
-    - sudo add-apt-repository -y ppa:jonathonf/python-3.6
+    - sudo add-apt-repository -y ppa:deadsnakes/ppa
     - sudo apt-get -q update
     - sudo apt-get -y install python3.6
 
