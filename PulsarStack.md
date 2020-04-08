@@ -1,6 +1,6 @@
 # The LWA Pulsar Stack
 
-
+Pulsar data reduction software (and versions) currently avaliable on the LWA Users Computing Facility ([LWA Memo #193](http://www.phys.unm.edu/~lwa/memos/memo/lwa0193d.pdf)).  This is in addition to the [LWA Software Library](https://fornax.phys.unm.edu/lwa/trac/) and the [pulsar extension](https://github.com/lwa-project/pulsar/).
 
 ## TEMPO
 http://tempo.sourceforge.net/
@@ -20,6 +20,15 @@ git clone https://github.com/scottransom/presto.git
 git checkout e90b8148f813c151f588f5f94b81b606964b03a8
 cd src
 make
+```
+
+## psrfits_utils
+```
+git clone https://github.com/lwa-project/psrfits_utils.git
+./prepare
+./configure
+make
+sudo make install
 ```
 
 ## EPSIC
