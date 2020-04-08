@@ -21,6 +21,24 @@ git checkout e90b8148f813c151f588f5f94b81b606964b03a8
 cd src
 make
 ```
+with one small change to get around some segfaults in `prepdata`:
+```
+diff --git a/src/backend_common.c b/src/backend_common.c
+index d38c3ba..f9f173b 100644
+--- a/src/backend_common.c
++++ b/src/backend_common.c
+@@ -532,8 +532,8 @@ int read_psrdata(float *fdata, int numspect, struct spectra_info *s,
+             numsubints = numspect / s->spectra_per_subint;
+         if (obsmask->numchan)
+             mask = 1;
+-        rawdata1 = gen_fvect(numsubints * s->spectra_per_subint * s->num_channels);
+-        rawdata2 = gen_fvect(numsubints * s->spectra_per_subint * s->num_channels);
++        rawdata1 = gen_fvect((long) numsubints * s->spectra_per_subint * s->num_channels);
++        rawdata2 = gen_fvect((long) numsubints * s->spectra_per_subint * s->num_channels);
+         allocd = 1;
+         duration = numsubints * s->time_per_subint;
+         currentdata = rawdata1;
+```
 
 ## psrfits_utils
 ```
