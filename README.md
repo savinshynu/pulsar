@@ -6,7 +6,7 @@ frameworks as well as the psrfits_utils Python module.  psrfits_utils can
 be found at:  https://github.com/lwa-project/psrfits_utils
 
 No installation (e.g., python setup.py install) is required to use the 
-software.  Simply run make to build the _psr.so and _helper.so modules and 
+software.  Simply run make to build the `_psr.so` and `_helper.so` modules and 
 then use the scripts in the Pulsar directory.
 
 writePsrfits2.py
