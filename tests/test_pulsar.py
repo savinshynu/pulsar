@@ -98,11 +98,11 @@ if run_scripts_tests:
         name = 'test_%s' % _name_to_name(script)
         doc = """Simple execution of the '%s' script.""" % os.path.basename(script)
         setattr(test, '__doc__', doc)
-        setattr(drx_tests, name, test)
+        setattr(pulsar_tests, name, test)
 
 
 class pulsar_test_suite(unittest.TestSuite):
-    """A unittest.TestSuite class which contains all of the DRX commissioning script
+    """A unittest.TestSuite class which contains all of the DRX pulsar script
     tests."""
     
     def __init__(self):
