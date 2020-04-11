@@ -52,7 +52,7 @@ PyObject *CombineToIntensity(PyObject *self, PyObject *args, PyObject *kwds) {
 	npy_intp dims[2];
 	dims[0] = (npy_intp) (nStand/2);
 	dims[1] = (npy_intp) nSamps;
-	if( signalsF != NULL ) {
+	if( signalsF != NULL && signalsF != Py_None ) {
 		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_FLOAT32, 2, 2);
 		if(dataF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 2-D float32");
@@ -163,7 +163,7 @@ PyObject *CombineToLinear(PyObject *self, PyObject *args, PyObject *kwds) {
 	npy_intp dims[2];
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nSamps;
-	if( signalsF != NULL ) {
+	if( signalsF != NULL && signalsF != Py_None ) {
 		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_FLOAT32, 2, 2);
 		if(dataF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 2-D float32");
@@ -271,7 +271,7 @@ PyObject *CombineToCircular(PyObject *self, PyObject *args, PyObject *kwds) {
 	npy_intp dims[2];
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nSamps;
-	if( signalsF != NULL ) {
+	if( signalsF != NULL && signalsF != Py_None ) {
 		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_FLOAT32, 2, 2);
 		if(dataF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 2-D float32");
@@ -388,7 +388,7 @@ PyObject *CombineToStokes(PyObject *self, PyObject *args, PyObject *kwds) {
 	npy_intp dims[2];
 	dims[0] = (npy_intp) (4*(nStand/2));
 	dims[1] = (npy_intp) nSamps;
-	if( signalsF != NULL ) {
+	if( signalsF != NULL && signalsF != Py_None ) {
 		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_FLOAT32, 2, 2);
 		if(dataF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 2-D float32");

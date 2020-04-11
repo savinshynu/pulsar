@@ -181,7 +181,7 @@ PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) {
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
 	dims[2] = (npy_intp) nFFT;
-	if( drxDataF != NULL ) {
+	if( drxDataF != NULL && drxDataF != Py_None ) {
 		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(drxDataF, NPY_COMPLEX64, 3, 3);
 		if(dataF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output outRawSpectra array to 3-D complex64");
