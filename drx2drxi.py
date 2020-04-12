@@ -168,11 +168,11 @@ def main(args):
     idf = DRXFile(args.filename)
     
     # Load in basic information about the data
-    nFramesFile = idf.get_info('nFrames')
+    nFramesFile = idf.get_info('nframe')
     srate = idf.get_info('sample_rate')
     ttSkip = int(round(196e6/srate))*4096
     beam = idf.get_info('beam')
-    beampols = idf.get_info('beampols')
+    beampols = idf.get_info('nbeampol')
     tunepol = beampols
     
     # Offset, if needed
