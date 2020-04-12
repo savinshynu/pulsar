@@ -22,7 +22,7 @@ _FILENAME = 'data/drx.dat'
 
 
 currentDir = os.path.abspath(os.getcwd())
-if os.path.exists(os.path.join(currentDir, 'test_drx.py')):
+if os.path.exists(os.path.join(currentDir, 'test_pulsar.py')):
     MODULE_BUILD = currentDir
 else:
     MODULE_BUILD = None
@@ -89,7 +89,7 @@ def _name_to_name(filename):
 
 
 if run_scripts_tests:
-    _SCRIPTS = ['../drx2dri.py', 
+    _SCRIPTS = ['../drx2drxi.py', 
                 '../writePsrfits2.py --ra=00:00:00 --dec=00:00:00',
                 '../writePsrfits2D.py --ra=00:00:00 --dec=00:00:00 4.0']
     _SCRIPTS.sort()
