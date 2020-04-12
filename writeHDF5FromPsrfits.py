@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Given a PSRFITS file, create a HDF5 file in the standard LWA1 format.
@@ -256,11 +255,8 @@ def main(args):
             ds['obs1'].attrs['nchan'] = LFFT
             
             ### Create the progress bar so that we can keep up with the conversion.
-            try:
-                pbar = progress.ProgressBarPlus(max=len(filenames)*dur)
-            except AttributeError:
-                pbar = progress.ProgressBar(max=len(filenames)*dur)
-                
+            pbar = progress.ProgressBarPlus(max=len(filenames)*dur)
+            
         ## Frequency information
         freq = hdulist[1].data[0][12]*1e6		# MHz -> Hz
         ds['obs1'].attrs['RBW'] = freq[1]-freq[0]
@@ -293,7 +289,7 @@ def main(args):
             ### to the HDF5 file
             for j in xrange(nSubs):
                 k = (i-skip)*nSubs + j
-                t = subint[1] + tInt*(j-nSubs/2)
+                t = subint[1] + tInt*(j-nSubs//2)
                 d = data[:,:,j]*bscl + bzero
                 
                 if c == 0:

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Given a DRX file, create two interleaved DRX (DRXI) files, one for each tuning
@@ -181,9 +180,9 @@ def main(args):
     nFramesFile -= int(args.offset*srate/4096)*tunepol
     
     ## Date
-    beginDate = ephem.Date(astro.unix_to_utcjd(idf.get_info('tStart')) - astro.DJD_OFFSET)
-    beginTime = beginDate.datetime()
-    mjd = astro.jd_to_mjd(astro.unix_to_utcjd(idf.get_info('tStart')))
+    beginDate = idf.get_info('start_time')
+    beginTime = beginDate.datetime
+    mjd = beginDate.mjd
     mjd_day = int(mjd)
     mjd_sec = (mjd-mjd_day)*86400
     
@@ -222,11 +221,8 @@ def main(args):
     fhOut.append( open("%s_b%it1.dat" % (outname, beam), 'wb') )
     fhOut.append( open("%s_b%it2.dat" % (outname, beam), 'wb') )
     
-    try:
-        pb = progress.ProgressBarPlus(max=nCaptures)
-    except AttributeError:
-        pb = progress.ProgressBar(max=nCaptures)
-        
+    pb = progress.ProgressBarPlus(max=nCaptures)
+    
     newFrame = bytearray([0 for i in xrange(32+4096*2)])
     
     # Setup the buffer

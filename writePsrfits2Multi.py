@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Given several DRX files observed simultaneously with different beams, create
@@ -152,19 +151,19 @@ def main(args):
             
         # Find out how many frame sets are in each file
         srate = idf.get_info('sample_rate')
-        beampols = idf.get_info('beampols')
+        beampols = idf.get_info('nbeampol')
         tunepol = beampols
-        nFramesFile = idf.get_info('nFrames')
+        nFramesFile = idf.get_info('nframe')
         
         # Offset, if needed
         o = 0
         if args.skip != 0.0:
             o = idf.offset(args.skip)
         nFramesFile -= int(o*srate/4096)*tunepol
-        nFrames.append( nFramesFile / tunepol )
+        nFrames.append( nFramesFile // tunepol )
         
         # Get the start time of the file
-        startTimes.append( idf.get_info('tStartSamples') )
+        startTimes.append( idf.get_info('start_time_samples') )
         
         # Validate
         try:
@@ -184,9 +183,9 @@ def main(args):
     siCountMax = []
     for filename,startTime,nFrame in zip(args.filename, startTimes, nFrames):
         diff = max(startTimes) - startTime
-        frameOffsets.append( diff / ttSkip )
+        frameOffsets.append( diff // ttSkip )
         diff = diff - frameOffsets[-1]*ttSkip
-        sampleOffset = diff / spSkip
+        sampleOffset = diff // spSkip
         sampleOffsets.append( sampleOffset )
         if sampleOffsets[-1] == 4096:
             frameOffsets[-1] += 1
@@ -197,7 +196,7 @@ def main(args):
             tickOffsets.append( 0 )
             
         nFrame = nFrame - frameOffsets[-1] - 1
-        nSubints = nFrame / (nsblk * LFFT / 4096)
+        nSubints = nFrame // (nsblk * LFFT // 4096)
         siCountMax.append( nSubints )
     siCountMax = min(siCountMax)
     
@@ -251,9 +250,9 @@ def main(args):
             
         # Find out how many frame sets are in each file
         srate = idf.get_info('sample_rate')
-        beampols = idf.get_info('beampols')
+        beampols = idf.get_info('nbeampol')
         tunepol = beampols
-        nFramesFile = idf.get_info('nFrames')
+        nFramesFile = idf.get_info('nframe')
         
         # Offset, if needed
         o = 0
@@ -265,10 +264,10 @@ def main(args):
         o += idf.offset(frameOffset*4096/srate)
         
         ## Date
-        tStart = idf.get_info('tStart') + sampleOffset*spSkip/fS + tickOffset/fS
-        beginDate = datetime.utcfromtimestamp(tStart)
+        tStart = idf.get_info('start_time') + sampleOffset*spSkip/fS + tickOffset/fS
+        beginDate = tStart.datetime
         beginTime = beginDate
-        mjd = astro.jd_to_mjd(astro.unix_to_utcjd(tStart))
+        mjd = tStart.mjd
         mjd_day = int(mjd)
         mjd_sec = (mjd-mjd_day)*86400
         if args.output is None:
@@ -367,7 +366,7 @@ def main(args):
             
         # Speed things along, the data need to be processed in units of 'nsblk'.  
         # Find out how many frames per tuning/polarization that corresponds to.
-        chunkSize = nsblk*LFFT/4096
+        chunkSize = nsblk*LFFT//4096
         chunkTime = LFFT/srate*nsblk
         
         # Frequency arrays for use with the phase rotator
@@ -387,11 +386,8 @@ def main(args):
                 return flag
                 
         # Create the progress bar so that we can keep up with the conversion.
-        try:
-            pbar = progress.ProgressBarPlus(max=siCountMax, span=52)
-        except AttributeError:
-            pbar = progress.ProgressBar(max=siCountMax, span=52)
-            
+        pbar = progress.ProgressBarPlus(max=siCountMax, span=52)
+        
         # Pre-read the first frame so that we have something to pad with, if needed
         if sampleOffset != 0:
             # Pre-read the first frame

@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Given an HDF5 file from drspec2hdf.py, create one of more PSRFITS file(s).
@@ -132,8 +131,8 @@ def main(args):
     LFFT = int(obs1.attrs['LFFT'])
     nchan = int(obs1.attrs['nchan'])
     chanOffset = LFFT - nchan		# Packing offset to deal with old HDF5 files that contain only LFFT-1 channels
-    central_freq1 = obs1tuning1['freq'][LFFT/2-chanOffset]
-    central_freq2 = obs1tuning2['freq'][LFFT/2-chanOffset]
+    central_freq1 = obs1tuning1['freq'][LFFT//2-chanOffset]
+    central_freq2 = obs1tuning2['freq'][LFFT//2-chanOffset]
     data_products = list(obs1tuning1)
     data_products.sort()
     try:
@@ -289,11 +288,8 @@ def main(args):
             return flag
             
     # Create the progress bar so that we can keep up with the conversion.
-    try:
-        pbar = progress.ProgressBarPlus(max=nFramesFile/chunkSize, span=55)
-    except AttributeError:
-        pbar = progress.ProgressBar(max=nFramesFile/chunkSize, span=55)
-        
+    pbar = progress.ProgressBarPlus(max=nFramesFile//chunkSize, span=55)
+    
     # Go!
     done = False
     

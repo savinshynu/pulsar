@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Given a DRX file, create one of more PSRFITS file(s).
@@ -147,9 +146,9 @@ def main(args):
     idf = DRXFile(args.filename)
     
     # Load in basic information about the data
-    nFramesFile = idf.get_info('nFrames')
+    nFramesFile = idf.get_info('nframe')
     srate = idf.get_info('sample_rate')
-    beampols = idf.get_info('beampols')
+    beampols = idf.get_info('nbeampol')
     tunepol = beampols
     
     # Offset, if needed
@@ -159,9 +158,9 @@ def main(args):
     nFramesFile -= int(o*srate/4096)*tunepol
     
     ## Date
-    beginDate = ephem.Date(astro.unix_to_utcjd(idf.get_info('tStart')) - astro.DJD_OFFSET)
-    beginTime = beginDate.datetime()
-    mjd = astro.jd_to_mjd(astro.unix_to_utcjd(idf.get_info('tStart')))
+    beginDate = idf.get_info('start_time')
+    beginTime = beginDate.datetime
+    mjd = beginDate.mjd
     mjd_day = int(mjd)
     mjd_sec = (mjd-mjd_day)*86400
     if args.output is None:
@@ -182,7 +181,7 @@ def main(args):
     print("Sub-block Time: %f s" % (LFFT/srate*nsblk,))
     print("Frames: %i (%.3f s)" % (nFramesFile, 4096.0*nFramesFile / srate / tunepol))
     print("---")
-    print("Offset: %.3f s (%i frames)" % (o, o*srate/4096*tunepol))
+    print("Offset: %.3f s (%i frames)" % (o, o*srate//4096*tunepol))
     print("---")
     print("Using FFTW Wisdom? %s" % useWisdom)
     
@@ -284,7 +283,7 @@ def main(args):
         
     # Speed things along, the data need to be processed in units of 'nsblk'.  
     # Find out how many frames per tuning/polarization that corresponds to.
-    chunkSize = nsblk*LFFT/4096
+    chunkSize = nsblk*LFFT//4096
     chunkTime = LFFT/srate*nsblk
     
     # Calculate the SK limites for weighting
@@ -300,11 +299,8 @@ def main(args):
             return flag
             
     # Create the progress bar so that we can keep up with the conversion.
-    try:
-        pbar = progress.ProgressBarPlus(max=nFramesFile/(4*chunkSize), span=52)
-    except AttributeError:
-        pbar = progress.ProgressBar(max=nFramesFile/(4*chunkSize), span=52)
-        
+    pbar = progress.ProgressBarPlus(max=nFramesFile//(4*chunkSize), span=52)
+    
     # Go!
     rdr = threading.Thread(target=reader, args=(idf, chunkTime, readerQ), kwargs={'core':0})
     rdr.setDaemon(True)

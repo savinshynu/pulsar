@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Given a DR spectrometer file, create one of more PSRFITS file(s).
@@ -83,7 +82,7 @@ def main(args):
     
     # Open
     idf = DRSpecFile(args.filename)
-    nFramesFile = idf.get_info('nFrames')
+    nFramesFile = idf.get_info('nframe')
     LFFT = idf.get_info('LFFT')
     
     # Load in basic information about the data
@@ -93,7 +92,7 @@ def main(args):
     central_freq2 = idf.get_info('freq2')
     data_products = idf.get_info('data_products')
     isLinear = ('XX' in data_products) or ('YY' in data_products)
-    tInt = idf.get_info('tInt')
+    tInt = idf.get_info('tint')
     
     # Offset, if needed
     o = 0
@@ -105,9 +104,9 @@ def main(args):
     nsblk = 32
     
     ## Date
-    beginDate = ephem.Date(astro.unix_to_utcjd(idf.get_info('tStart')) - astro.DJD_OFFSET)
-    beginTime = beginDate.datetime()
-    mjd = astro.jd_to_mjd(astro.unix_to_utcjd(idf.get_info('tStart')))
+    beginDate = idf.get_info('start_time')
+    beginTime = beginDate.datetime
+    mjd = beginDate.mjd
     mjd_day = int(mjd)
     mjd_sec = (mjd-mjd_day)*86400
     if args.output is None:
@@ -124,7 +123,7 @@ def main(args):
     print("Data Products: %s" % ','.join(data_products))
     print("Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile))
     print("---")
-    print("Offset: %.3f s (%i frames)" % (o, o/tInt))
+    print("Offset: %.3f s (%.0f frames)" % (o, o/tInt))
     print("---")
     
     # Create the output PSRFITS file(s)
@@ -241,11 +240,8 @@ def main(args):
             return flag
             
     # Create the progress bar so that we can keep up with the conversion.
-    try:
-        pbar = progress.ProgressBarPlus(max=nFramesFile/chunkSize, span=55)
-    except AttributeError:
-        pbar = progress.ProgressBar(max=nFramesFile/chunkSize, span=55)
-        
+    pbar = progress.ProgressBarPlus(max=nFramesFile//chunkSize, span=55)
+    
     # Go!
     done = False
     
