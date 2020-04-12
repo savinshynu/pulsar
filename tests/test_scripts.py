@@ -65,7 +65,8 @@ _SAFE_TO_IGNORE = ["Possible",
                    "Undefined variable 'CombineToStokes",
                    "Undefined variable 'OptimizeDataLevels8Bit",
                    "Undefined variable 'OptimizeDataLevels4Bit",
-                   "Undefined variable 'useWisdom"]
+                   "Undefined variable 'useWisdom",
+                   "Class 'int' has no 'from_bytes' member"]
 
 
 def _get_context(filename, line, before=0, after=0):
@@ -118,7 +119,7 @@ def _test_generator(script):
                     context = _get_context(script, int(line_no), before=20, after=20)
                     loc = context[20-1]
                     level = len(loc) - len(loc.lstrip()) - 4
-                    if loc.strip().rstrip() == 'rawSpectraDedispersed,':
+                    if loc.strip().rstrip() == 'rawSpectraDedispersed)':
                         ## This is fragile on purpose
                         loc = context[20-5]
                         level = len(loc) - len(loc.lstrip()) - 4
