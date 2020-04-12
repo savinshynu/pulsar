@@ -289,7 +289,10 @@ def main(args):
             newFrame[33:8224:2] = pair1[32:]
             
             ### Update the quatities that have changed
-            newFrame[4] = struct.pack('>B', id)
+            try:
+                newFrame[4] = struct.pack('>B', id)
+            except TypeError:
+                newFrame[4] = int.from_bytes(struct.pack('>B', id), byteorder='little')
             newFrame[14:24] = struct.pack('>HQ', tNom, timetag)
             
             ### Save

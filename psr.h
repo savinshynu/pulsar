@@ -3,6 +3,11 @@
 
 #include <complex.h>
 
+// Python3 support
+#if PY_MAJOR_VERSION >= 3
+    #define PyInt_AsLong PyLong_AsLong
+    #define PyInt_FromLong PyLong_FromLong
+
 // Dispersion constant in MHz^2 s / pc cm^-3
 #define DCONST (double) 4.148808e3
 

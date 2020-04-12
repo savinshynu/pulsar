@@ -118,7 +118,7 @@ def _test_generator(script):
                     context = _get_context(script, int(line_no), before=20, after=20)
                     loc = context[20-1]
                     level = len(loc) - len(loc.lstrip()) - 4
-                    if loc.find('rawSpectraDedispersed') != -1:
+                    if loc.strip().rstrip() == 'rawSpectraDedispersed,':
                         ## This is fragile on purpose
                         loc = context[20-5]
                         level = len(loc) - len(loc.lstrip()) - 4
