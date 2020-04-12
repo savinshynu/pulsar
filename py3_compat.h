@@ -11,6 +11,7 @@
     #define PyCapsule_Type PyCObject_Type
     #define PyInt_AsLong PyLong_AsLong
     #define PyInt_FromLong PyLong_FromLong
+    #define PyInt_Check PyLong_Check
     #define PyString_GET_SIZE PyBytes_GET_SIZE
     #define PyString_AS_STRING PyBytes_AS_STRING
     #define PyString_FromString PyUnicode_FromString
