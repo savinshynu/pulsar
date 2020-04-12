@@ -362,15 +362,15 @@ def main(args):
         ## Dedisperse
         try:
             rawSpectraDedispersed = MultiChannelCD(rawSpectra, spectraFreq1, spectraFreq2,
-                                                1.0*srate/LFFT, DM, 
-                                                rawSpectraPrev, 
-                                                rawSpectraNext, 
-                                                rawSpectraDedispersed)
+                                                   1.0*srate/LFFT, DM, 
+                                                   rawSpectraPrev, 
+                                                   rawSpectraNext, 
+                                                   rawSpectraDedispersed)
         except NameError:
             rawSpectraDedispersed = MultiChannelCD(rawSpectra, spectraFreq1, spectraFreq2,
-                                                1.0*srate/LFFT, DM, 
-                                                rawSpectraPrev, 
-                                                rawSpectraNext)
+                                                   1.0*srate/LFFT, DM, 
+                                                   rawSpectraPrev, 
+                                                   rawSpectraNext)
             
         ## Update the state variables used to get the CD process continuous
         rawSpectraPrev[...] = rawSpectra

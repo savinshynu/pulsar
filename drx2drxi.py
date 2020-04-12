@@ -45,10 +45,11 @@ class RawDRXFrame(object):
     def __setitem__(self, key, value):
         self.contents[key] = value
         
-    def parse_id(self):
-        id = self.contents[4]
-        id = (id & 7), ((id >> 3) & 7), ((id >> 7) & 1)
-        return id
+    @property
+    def id(self):
+        _id = self.contents[4]
+        _id = (_id & 7), ((_id >> 3) & 7), ((_id >> 7) & 1)
+        return _id
         
     @property
     def timetag(self):
