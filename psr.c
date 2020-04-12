@@ -20,6 +20,7 @@
 #include "numpy/npy_math.h"
 
 #include "psr.h"
+#include "py3_compat.h"
 
 
 /*
@@ -79,12 +80,15 @@ See the inidividual functions for more details.");
   Module Setup - Initialization
 */
 
-PyMODINIT_FUNC init_psr(void) {
+MOD_INIT(_psr) {
 	char filename[256];
 	PyObject *m, *all, *pModule, *pDataPath;
 
 	// Module definitions and functions
-	m = Py_InitModule3("_psr", SpecMethods, spec_doc);
+	MOD_DEF(m, "_psr", SpecMethods, spec_doc);
+	if( m == NULL ) {
+        return MOD_ERROR_VAL;
+    }
 	import_array();
 	
 	// Version information
@@ -118,4 +122,6 @@ PyMODINIT_FUNC init_psr(void) {
 	} else {
 		PyErr_Warn(PyExc_RuntimeWarning, "Cannot load the LSL FFTWF wisdom");
 	}
+	
+	return MOD_SUCCESS_VAL(m);
 }

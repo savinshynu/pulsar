@@ -15,6 +15,8 @@
 
 #include "numpy/arrayobject.h"
 
+#include "py3_compat.h"
+
 
 static PyObject *FastAxis0MinMax(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *pulses, *pulsesF;
@@ -780,11 +782,14 @@ parallel.  See the individual functions for more details.");
   Module Setup - Initialization
 */
 
-PyMODINIT_FUNC init_helper(void) {
+MOD_INIT(_helper) {
 	PyObject *m, *all;
 
 	// Module definitions and functions
-	m = Py_InitModule3("_helper", HelperMethods, helper_doc);
+	MOD_DEF(m, "_helper", HelperMethods, helper_doc);
+	if( m == NULL ) {
+        return MOD_ERROR_VAL;
+    }
 	import_array();
 	
 	// Version information
@@ -801,4 +806,5 @@ PyMODINIT_FUNC init_helper(void) {
 	PyList_Append(all, PyString_FromString("FastAxis1Percentiles5And99"));
 	PyModule_AddObject(m, "__all__", all);
 	
+	return MOD_SUCCESS_VAL(m);
 }

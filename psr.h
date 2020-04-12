@@ -3,26 +3,6 @@
 
 #include <complex.h>
 
-// Python3 support
-#if PY_MAJOR_VERSION >= 3
-    #define PyInt_AsLong PyLong_AsLong
-    #define PyInt_FromLong PyLong_FromLong
-    #define PyString_FromString PyUnicode_FromString
-inline char* PyString_AsString(PyObject *ob) {
-    PyObject *enc;
-    char *cstr;
-    enc = PyUnicode_AsEncodedString(ob, "utf-8", "Error");
-    if( enc == NULL ) {
-        PyErr_Format(PyExc_ValueError, "Cannot encode string");
-        return NULL;
-    }
-    cstr = PyBytes_AsString(enc);
-    Py_XDECREF(enc);
-    return cstr;
-}
-
-#endif
-
 // Dispersion constant in MHz^2 s / pc cm^-3
 #define DCONST (double) 4.148808e3
 
