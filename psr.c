@@ -20,7 +20,6 @@
 #include "numpy/npy_math.h"
 
 #include "psr.h"
-#include "py3_compat.h"
 
 
 /*
