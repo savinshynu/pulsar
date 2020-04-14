@@ -90,8 +90,8 @@ def _name_to_name(filename):
 
 if run_scripts_tests:
     _SCRIPTS = ['../drx2drxi.py', 
-                '../writePsrfits2.py --name B1919+21 --ra=19:21:44.815 --dec=21:53:02.25',
-                '../writePsrfits2D.py --name B1919+21 --ra=19:21:44.815 --dec=21:53:02.25 12.455']
+                '../writePsrfits2.py --source=B1919+21 --ra=19:21:44.815 --dec=21:53:02.25',
+                '../writePsrfits2D.py --source=B1919+21 --ra=19:21:44.815 --dec=21:53:02.25 12.455']
     _SCRIPTS.sort()
     for script in _SCRIPTS:
         test = _test_generator(script)

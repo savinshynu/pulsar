@@ -89,7 +89,7 @@ def _name_to_name(filename):
 
 
 if run_scripts_tests:
-    _SCRIPTS = ['../writePsrfits2FromDRSpec.py --name B0329+54 --ra=3:32:59.368 --dec=54:34:43.57',]
+    _SCRIPTS = ['../writePsrfits2FromDRSpec.py --source=B0329+54 --ra=3:32:59.368 --dec=54:34:43.57',]
     _SCRIPTS.sort()
     for script in _SCRIPTS:
         test = _test_generator(script)
