@@ -1,5 +1,5 @@
 """
-Unit tests for the a small DRX file.
+Unit tests for the a small DR spectrometer file.
 """
 
 # Python3 compatibility
@@ -16,13 +16,13 @@ import numpy
 import subprocess
 
 
-_URL = 'https://lda10g.alliance.unm.edu/tutorial/UnknownPulsar/056227_000024985_DRX.dat'
+_URL = 'https://lda10g.alliance.unm.edu/tutorial/B0329+54/056770_000044687'
 _SIZE_MB = 250
-_FILENAME = 'data/drx.dat'
+_FILENAME = 'data/drspec.dat'
 
 
 currentDir = os.path.abspath(os.getcwd())
-if os.path.exists(os.path.join(currentDir, 'test_pulsar.py')):
+if os.path.exists(os.path.join(currentDir, 'test_pulsar_drspec.py')):
     MODULE_BUILD = currentDir
 else:
     MODULE_BUILD = None
@@ -32,7 +32,7 @@ if MODULE_BUILD is not None:
     run_scripts_tests = True
 
 
-class pulsar_tests(unittest.TestCase):
+class pulsar_drspec_tests(unittest.TestCase):
     def setUp(self):
         """Make sure we have the comparison files in place."""
         
@@ -89,27 +89,25 @@ def _name_to_name(filename):
 
 
 if run_scripts_tests:
-    _SCRIPTS = ['../drx2drxi.py', 
-                '../writePsrfits2.py --name B1919+21 --ra=19:21:44.815 --dec=21:53:02.25',
-                '../writePsrfits2D.py --name B1919+21 --ra=19:21:44.815 --dec=21:53:02.25 12.455']
+    _SCRIPTS = ['../writePsrfits2FromDRSpec.py --name B0329+54 --ra=3:32:59.368 --dec=54:34:43.57',]
     _SCRIPTS.sort()
     for script in _SCRIPTS:
         test = _test_generator(script)
         name = 'test_%s' % _name_to_name(script)
         doc = """Simple execution of the '%s' script.""" % os.path.basename(script.split()[0])
         setattr(test, '__doc__', doc)
-        setattr(pulsar_tests, name, test)
+        setattr(pulsar_drspec_tests, name, test)
 
 
-class pulsar_test_suite(unittest.TestSuite):
-    """A unittest.TestSuite class which contains all of the DRX pulsar script
-    tests."""
+class pulsar_drspec_test_suite(unittest.TestSuite):
+    """A unittest.TestSuite class which contains all of the DR spectrometer 
+    pulsar script tests."""
     
     def __init__(self):
         unittest.TestSuite.__init__(self)
         
         loader = unittest.TestLoader()
-        self.addTests(loader.loadTestsFromTestCase(pulsar_tests))
+        self.addTests(loader.loadTestsFromTestCase(pulsar_drspec_tests))
 
 
 if __name__ == '__main__':
