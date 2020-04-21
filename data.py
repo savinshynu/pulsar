@@ -1,14 +1,12 @@
-﻿# -*- coding: utf-8 -*-
-
-"""
+﻿"""
 Module to help with manipulating HDF5 beam data files.
 """
 
-# Python3 compatiability
+# Python2 compatibility
 from __future__ import print_function, division
 import sys
-if sys.version_info > (3,):
-    xrange = range
+if sys.version_info < (3,):
+    range = xrange
     
 import os
 import h5py
@@ -296,7 +294,7 @@ def fillFromMetabundle(f, tarball):
                 dlys = cbfg.create_dataset('Delays', (len(obsD['steps']), nstand*2+1), 'f4')
                 dlys.attrs['col0'] = 'StartTime'
                 dlys.attrs['col0_Unit'] = 's'
-                for j in xrange(2*nstand):
+                for j in range(2*nstand):
                     dlys.attrs['col%i' % (j+1)] = '%s Digitizer %i' % (label_base, j+1)
                     dlys.attrs['col%i_Unit' % (j+1)] = 'ns'
                     
@@ -305,7 +303,7 @@ def fillFromMetabundle(f, tarball):
                 t = obsD['MJD']*86400.0 + obsD['MPM']/1000.0 - 3506716800.0
                 for i,s in enumerate(obsD['steps']):
                     dataD[i,0] = t
-                    for j in xrange(2*nstand):
+                    for j in range(2*nstand):
                         dataD[i,1+j] = _valuetoDelay(s.delay[j])
                         
                 # Save the delays
@@ -315,9 +313,9 @@ def fillFromMetabundle(f, tarball):
                 gais.attrs['col0'] = 'StartTime'
                 gais.attrs['col0_Unit'] = 's'
                 m = 1
-                for j in xrange(nstand):
-                    for k in xrange(2):
-                        for l in xrange(2):
+                for j in range(nstand):
+                    for k in range(2):
+                        for l in range(2):
                             gais.attrs['col%i' % m] = '%s Stand %i %s contribution to beam %s' % (label_base, j+1, 'X' if k == 0 else 'Y', 'X' if l == 0 else 'Y')
                             gais.attrs['col%i_Unit' % m] = 'None'
                             m += 1
@@ -326,7 +324,7 @@ def fillFromMetabundle(f, tarball):
                 dataG = numpy.zeros((len(obsD['steps']), nstand*2*2+1))
                 for i,s in enumerate(obsD['steps']):
                     dataG[i,0] = t
-                    for j in xrange(nstand):
+                    for j in range(nstand):
                         dataG[i,1+4*j+0] = _valuetoGain(s.gain[j][0][0])
                         dataG[i,1+4*j+1] = _valuetoGain(s.gain[j][0][1])
                         dataG[i,1+4*j+2] = _valuetoGain(s.gain[j][1][0])
@@ -444,7 +442,7 @@ def fillFromSDF(f, sdfFilename, station=None):
                 dlys = cbfg.create_dataset('Delays', (len(obsS.steps), nstand*2+1), 'f4')
                 dlys.attrs['col0'] = 'StartTime'
                 dlys.attrs['col0_Unit'] = 's'
-                for j in xrange(2*nstand):
+                for j in range(2*nstand):
                     dlys.attrs['col%i' % (j+1)] = '%s Digitizer %i' % (label_base, j+1)
                     dlys.attrs['col%i_Unit' % (j+1)] = 'ns'
                     
@@ -453,7 +451,7 @@ def fillFromSDF(f, sdfFilename, station=None):
                 t = obsS.mjd*86400.0 + obsS.mpm/1000.0 - 3506716800.0
                 for i,s in enumerate(obsS.steps):
                     dataD[i,0] = t
-                    for j in xrange(2*nstand):
+                    for j in range(2*nstand):
                         dataD[i,1+j] = _valuetoDelay(s.delays[j])
                         
                 # Save the delays
@@ -463,9 +461,9 @@ def fillFromSDF(f, sdfFilename, station=None):
                 gais.attrs['col0'] = 'StartTime'
                 gais.attrs['col0_Unit'] = 's'
                 m = 1
-                for j in xrange(nstand):
-                    for k in xrange(2):
-                        for l in xrange(2):
+                for j in range(nstand):
+                    for k in range(2):
+                        for l in range(2):
                             gais.attrs['col%i' % m] = '%s Stand %i %s contribution to beam %s' % (label_base, j+1, 'X' if k == 0 else 'Y', 'X' if l == 0 else 'Y')
                             gais.attrs['col%i_Unit' % m] = 'None'
                             m += 1
@@ -474,7 +472,7 @@ def fillFromSDF(f, sdfFilename, station=None):
                 dataG = numpy.zeros((len(obsS.steps), nstand*2*2+1))
                 for i,s in enumerate(obsS.steps):
                     dataG[i,0] = t
-                    for j in xrange(nstand):
+                    for j in range(nstand):
                         dataG[i,1+4*j+0] = _valuetoGain(s.gains[j][0][0])
                         dataG[i,1+4*j+1] = _valuetoGain(s.gains[j][0][1])
                         dataG[i,1+4*j+2] = _valuetoGain(s.gains[j][1][0])

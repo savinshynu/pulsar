@@ -4,12 +4,12 @@
 Given an HDF5 file from drspec2hdf.py, create one of more PSRFITS file(s).
 """
 
-# Python3 compatiability
+# Python2 compatibility
 from __future__ import print_function, division
 import sys
-if sys.version_info > (3,):
-    xrange = range
-    raw_input = input
+if sys.version_info < (3,):
+    range = xrange
+    input = raw_input
     
 import os
 import sys
@@ -104,7 +104,7 @@ def main(args):
         if args.ra is None or args.dec is None:
             tempRA, tempDec, tempService = resolveTarget('PSR '+args.source)
             print("%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService))
-            out = raw_input('=> Accept? [Y/n] ')
+            out = input('=> Accept? [Y/n] ')
             if out == 'n' or out == 'N':
                 sys.exit()
             else:
@@ -192,7 +192,7 @@ def main(args):
     else:
         OptimizeDataLevels = OptimizeDataLevels8Bit
         
-    for t in xrange(1, 2+1):
+    for t in range(1, 2+1):
         ## Basic structure and bounds
         pfo = pfu.psrfits()
         pfo.basefilename = "%s_b%it%i" % (args.output, beam, t)
@@ -263,7 +263,7 @@ def main(args):
         pfu.convert2_float_array(pfu_out[i].sub.dat_weights, numpy.ones(LFFT),  LFFT)
         pfu.set_float_value(pfu_out[i].sub.dat_weights, 0,      0)
         pfu.set_float_value(pfu_out[i].sub.dat_weights, LFFT-1, 0)
-        for j in xrange(chanOffset):
+        for j in range(chanOffset):
             pfu.set_float_value(pfu_out[i].sub.dat_weights, j, 0)
             
         # Define the data scaling (default is a scale of one and an offset of zero)
@@ -295,11 +295,11 @@ def main(args):
     
     siCount = 0
     nSubInts = nFramesFile / chunkSize
-    for i in xrange(nSubInts):
+    for i in range(nSubInts):
         ## Read in the data
         data = numpy.zeros((2*len(data_products), LFFT*chunkSize), dtype=numpy.float64)
         
-        for j in xrange(chunkSize):
+        for j in range(chunkSize):
             jP = j + i*chunkSize
             try:
                 if obs1['time'][jP] > oTime + 1.001*tInt:

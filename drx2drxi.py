@@ -4,11 +4,11 @@
 Given a DRX file, create two interleaved DRX (DRXI) files, one for each tuning
 """
 
-# Python3 compatiability
+# Python2 compatibility
 from __future__ import print_function, division
 import sys
-if sys.version_info > (3,):
-    xrange = range
+if sys.version_info < (3,):
+    range = xrange
     
 import os
 import sys
@@ -224,7 +224,7 @@ def main(args):
     
     pb = progress.ProgressBarPlus(max=nCaptures)
     
-    newFrame = bytearray([0 for i in xrange(32+4096*2)])
+    newFrame = bytearray([0 for i in range(32+4096*2)])
     
     # Setup the buffer
     buffer = RawDRXFrameBuffer(beams=[beam,], reorder=True)
@@ -238,7 +238,7 @@ def main(args):
             
         ## Load in some frames
         rFrames = deque()
-        for i in xrange(tunepol):
+        for i in range(tunepol):
             try:
                 rFrames.append( RawDRXFrame(fh.read(drx.FRAME_SIZE)) )
                 #print(rFrames[-1].id, rFrames[-1].timetag, c, i)

@@ -4,12 +4,12 @@
 Given a PSRFITS file, create a HDF5 file in the standard LWA1 format.
 """
 
-# Python3 compatiability
+# Python2 compatibility
 from __future__ import print_function, division
 import sys
-if sys.version_info > (3,):
-    xrange = range
-    raw_input = input
+if sys.version_info < (3,):
+    range = xrange
+    input = raw_input
     
 import os
 import re
@@ -208,7 +208,7 @@ def main(args):
             outname = '%s.hdf5' % outname
             
             if os.path.exists(outname):
-                yn = raw_input("WARNING: '%s' exists, overwrite? [Y/n] " % outname)
+                yn = input("WARNING: '%s' exists, overwrite? [Y/n] " % outname)
                 if yn not in ('n', 'N'):
                     os.unlink(outname)
                 else:
@@ -264,7 +264,7 @@ def main(args):
         ds['obs1-freq%i' % (tuning,)][:] = freq
         
         ## Read in the data and apply what ever scaling is needed
-        for i in xrange(skip, skip+dur):
+        for i in range(skip, skip+dur):
             ### Access the correct subintegration
             subint = hdulist[1].data[i]
             
@@ -287,7 +287,7 @@ def main(args):
             
             ### Apply the scaling/offset to the data and save the results 
             ### to the HDF5 file
-            for j in xrange(nSubs):
+            for j in range(nSubs):
                 k = (i-skip)*nSubs + j
                 t = subint[1] + tInt*(j-nSubs//2)
                 d = data[:,:,j]*bscl + bzero

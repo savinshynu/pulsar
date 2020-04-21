@@ -1,16 +1,15 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Given a DRX file, create one of more PSRFITS file(s).
 """
 
-# Python3 compatiability
+# Python2 compatibility
 from __future__ import print_function, division
 import sys
-if sys.version_info > (3,):
-    xrange = range
-    raw_input = input
+if sys.version_info < (3,):
+    range = xrange
+    input = raw_input
     
 import os
 import sys
@@ -121,7 +120,7 @@ def main(args):
         if args.ra is None or args.dec is None:
             tempRA, tempDec, tempService = resolveTarget('PSR '+args.source)
             print("%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService))
-            out = raw_input('=> Accept? [Y/n] ')
+            out = input('=> Accept? [Y/n] ')
             if out == 'n' or out == 'N':
                 sys.exit()
             else:
@@ -230,7 +229,7 @@ def main(args):
     beginTime = beginDate.datetime
     mjd = beginDate.mjd
     
-    for t in xrange(1, 2+1):
+    for t in range(1, 2+1):
         ## Basic structure and bounds
         pfo = pfu.psrfits()
         pfo.basefilename = "%s_b%it%i" % (args.output, beam, t)
@@ -291,7 +290,7 @@ def main(args):
         pfu_out.append(pfo)
         
     freqBaseMHz = numpy.fft.fftshift( numpy.fft.fftfreq(LFFT, d=1.0/srate) ) / 1e6
-    for i in xrange(len(pfu_out)):
+    for i in range(len(pfu_out)):
         # Define the frequencies available in the file (in MHz)
         pfu.convert2_double_array(pfu_out[i].sub.dat_freqs, freqBaseMHz + pfu_out[i].hdr.fctr, LFFT)
         

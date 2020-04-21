@@ -1,15 +1,14 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Given a collection of single pulse files from PRESTO, plot them in an interactive way.
 """
 
-# Python3 compatiability
+# Python2 compatibility
 from __future__ import print_function, division
 import sys
-if sys.version_info > (3,):
-    xrange = range
+if sys.version_info < (3,):
+    range = xrange
     
 import os
 import sys
@@ -465,7 +464,7 @@ class SinglePulse_GUI(object):
         
         print("%6.3f s - Sorting pulses in time" % (time.time()-tStart,))
         order = numpy.argsort(self.data.data[:,2])
-        for i in xrange(self.data.shape[1]):
+        for i in range(self.data.shape[1]):
             self.data[:,i] = self.data[order,i]
             
         print("%6.3f s - Setting initial thresholds and plotting ranges" % (time.time()-tStart,))
@@ -487,7 +486,7 @@ class SinglePulse_GUI(object):
                         (self.data[:,1] >= sMin ) & (self.data[:,4] >= wMin  ) & \
                         (self.data[:,4] <= wMax) )[0]
         self.limits = [None,]*self.data.shape[1]
-        for i in xrange(self.data.shape[1]):
+        for i in range(self.data.shape[1]):
             self.limits[i] = findLimits(self.data[valid,i], usedB=False)
             
         if self.meta.bary and self.fitsname is not None:
@@ -616,7 +615,7 @@ class SinglePulse_GUI(object):
                         (self.data[:,1] >= sMin ) & (self.data[:,4] >= wMin  ) & \
                         (self.data[:,4] <= wMax)                               )[0]
         self.limits = [None,]*self.data.shape[1]
-        for i in xrange(self.data.shape[1]):
+        for i in range(self.data.shape[1]):
             self.limits[i] = findLimits(self.data[valid,i], usedB=False)
                         
         try:
@@ -2784,7 +2783,7 @@ class WaterfallDisplay(wx.Frame):
         
         ## Spectra extraction
         samp, tRel, spec, mask = [], [], [], []
-        for i in xrange(subIntStart, subIntStop+1):
+        for i in range(subIntStart, subIntStop+1):
             ### Access the correct subintegration
             subint = hdulist[1].data[i]
             
@@ -2807,7 +2806,7 @@ class WaterfallDisplay(wx.Frame):
             
             ### Apply the scaling/offset to the data and save the results 
             ### to the HDF5 file
-            for j in xrange(nSubs):
+            for j in range(nSubs):
                 s = i*nSubs + j
                 t = subint[1] - self.t + tInt*(j-nSubs/2)
                 d = data[:,:,j]*bscl + bzero
@@ -2836,7 +2835,7 @@ class WaterfallDisplay(wx.Frame):
         od = min([9, ws-2])
         
         bpm2 = []
-        for i in xrange(self.spec.shape[1]):
+        for i in range(self.spec.shape[1]):
             bpm = savitzky_golay(meanSpec[i,:], ws, od, deriv=0)
             bpm = numpy.ma.array(bpm, mask=~numpy.isfinite(bpm))
             
@@ -2851,7 +2850,7 @@ class WaterfallDisplay(wx.Frame):
             from _helper import FastAxis0Bandpass
             FastAxis0Bandpass(self.specBandpass.data, bpm2.astype(numpy.float32))
         except ImportError:
-            for i in xrange(self.spec.shape[1]):
+            for i in range(self.spec.shape[1]):
                 self.specBandpass.data[:,i,:] = self.spec.data[:,i,:] / bpm2[i]
                 
         # Downselect to something that centers the pulse
@@ -2864,7 +2863,7 @@ class WaterfallDisplay(wx.Frame):
         # Run the incoherent dedispersion on the data
         self.specD = self.spec*0
         self.specBandpassD = self.specBandpass*0
-        for i in xrange(self.specD.shape[1]):
+        for i in range(self.specD.shape[1]):
             self.specD[:,i,:] = incoherent(freq, self.spec[:,i,:], tInt, self.dm, boundary='fill', fill_value=numpy.nan)
             self.specBandpassD[:,i,:] = incoherent(freq, self.specBandpass[:,i,:], tInt, self.dm, boundary='fill', fill_value=numpy.nan)
             
@@ -2879,14 +2878,14 @@ class WaterfallDisplay(wx.Frame):
             if self.usedB:
                 limits0 = to_dB(limits0)
                 limits1 = to_dB(limits1)
-            for i in xrange(self.spec.shape[1]):
+            for i in range(self.spec.shape[1]):
                 self.limits[i] = list(limits0[i,:])
                 self.limitsBandpass[i] = list(limits1[i,:])
         except ImportError:
             toUse = range(self.spec.shape[2]/10, 9*self.spec.shape[2]/10+1)
-            for i in xrange(self.spec.shape[1]):
+            for i in range(self.spec.shape[1]):
                 self.limits[i] = findLimits(self.spec[:,i,:], usedB=self.usedB)
-            for i in xrange(self.spec.shape[1]):
+            for i in range(self.spec.shape[1]):
                 self.limitsBandpass[i] = findLimits(self.specBandpass[:,i,toUse], usedB=self.usedB)
                 
         # Flip the axis to make the pulsar people happy

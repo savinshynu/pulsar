@@ -1,11 +1,10 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
-# Python3 compatiability
+# Python2 compatibility
 from __future__ import print_function, division
 import sys
-if sys.version_info > (3,):
-    xrange = range
+if sys.version_info < (3,):
+    range = xrange
     
 import os
 import sys
@@ -91,11 +90,11 @@ def main(args):
         flagged = 0
         processed = 0
         sk = numpy.zeros((nPol, LFFT)) - 99.99
-        for i in xrange(0, (len(hdulist[1].data)/nSubsChunk)*nSubsChunk, nSubsChunk):
+        for i in range(0, (len(hdulist[1].data)/nSubsChunk)*nSubsChunk, nSubsChunk):
             ## Load in the current block of data
             blockData = []
             blockMask = None
-            for j in xrange(i, i+nSubsChunk):
+            for j in range(i, i+nSubsChunk):
                 ### Access the correct subintegration
                 subint = hdulist[1].data[j]
                 
@@ -116,7 +115,7 @@ def main(args):
                 
                 ### Apply the scaling/offset to the data and save the results 
                 ### to blockData
-                for k in xrange(nSubs):
+                for k in range(nSubs):
                     d = data[:,:,k]*bscl + bzero
                     d.shape += (1,)
                     blockData.append( d )
@@ -130,8 +129,8 @@ def main(args):
             blockData = numpy.concatenate(blockData, axis=2)
             
             ## Compute the S-K statistics
-            for p in xrange(nPol):
-                for l in xrange(LFFT):
+            for p in range(nPol):
+                for l in range(LFFT):
                     sk[p,l] = kurtosis.spectral_power(blockData[p,l,:], N=1.0*skN)
                     
             ## Compute the new mask - both SK and the frequency flagging
@@ -148,7 +147,7 @@ def main(args):
                 blockMask *= newMask
                 
             ## Update file
-            for j in xrange(i, i+nSubsChunk):
+            for j in range(i, i+nSubsChunk):
                 hdulist[1].data[j][13] = blockMask
                 
             ## Update the counters
