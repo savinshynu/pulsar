@@ -8,7 +8,6 @@ Given a PSRFITS file, create a HDF5 file in the standard LWA1 format.
 from __future__ import print_function, division
 import sys
 if sys.version_info < (3,):
-    range = xrange
     input = raw_input
     
 import os

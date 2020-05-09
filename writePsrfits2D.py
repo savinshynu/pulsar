@@ -8,7 +8,6 @@ Given a DRX file, create one of more PSRFITS file(s).
 from __future__ import print_function, division
 import sys
 if sys.version_info < (3,):
-    range = xrange
     input = raw_input
     
 import os
