@@ -86,7 +86,7 @@ http://dspsr.sourceforge.net/
 ```
 git clone git://git.code.sf.net/p/dspsr/code
 git checkout c277eba1e05ffa5e03310b13c2a0f0477758cf4f
-./bootstap
+./bootstrap
 ./configure --enable-shared --with-cuda-dir=/usr/local/cuda --with-cuda-include-dir=/usr/local/cuda/include --with-cuda-lib-dir=/usr/local/cuda/lib64
 make
 sudo make install
