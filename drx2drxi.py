@@ -254,7 +254,7 @@ def main(args):
             buffer.append(rFrames)
             
         timetag = buffer.peek()
-        if imetag is None:
+        if timetag is None:
             # Continue adding frames if nothing comes out.
             continue
         else:
