@@ -4,9 +4,10 @@ Unit tests for the various pulsar scripts.
 
 # Python2 compatibility
 from __future__ import print_function, division, absolute_import
-import sys
-if sys.version_info < (3,):
+try:
     range = xrange
+except NameError:
+    pass
     
 import unittest
 import glob
