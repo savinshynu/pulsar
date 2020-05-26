@@ -4,9 +4,10 @@ Unit tests for the a small DR spectrometer file.
 
 # Python2 compatibility
 from __future__ import print_function, division, absolute_import
-import sys
-if sys.version_info < (3,):
+try:
     range = xrange
+except NameError:
+    pass
     
 import unittest
 import os

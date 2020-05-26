@@ -6,10 +6,11 @@ Given a DRX file, create one of more PSRFITS file(s).
 
 # Python2 compatibility
 from __future__ import print_function, division
-import sys
-if sys.version_info < (3,):
+try:
     input = raw_input
-    
+except NameError:
+    pass
+        
 import os
 import sys
 import time
