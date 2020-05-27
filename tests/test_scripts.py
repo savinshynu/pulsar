@@ -116,7 +116,7 @@ def _test_generator(script):
                 ignore = False
                 if line.find('before assignment') != -1:
                     context = _get_context(script, int(line_no), before=20, after=20)
-                    loc = context[20-1]
+                    loc = context[20-2]
                     level = len(loc) - len(loc.lstrip()) - 4
                     if loc.strip().rstrip() == 'rawSpectraDedispersed)':
                         ## This is fragile on purpose
