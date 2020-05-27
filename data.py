@@ -391,7 +391,7 @@ def fillFromSDF(f, sdfFilename, station=None):
         grp.attrs['ARX_Gain1'] = arx['at1']
         grp.attrs['ARX_Gain2'] = arx['at2']
         grp.attrs['ARX_GainS'] = arx['atsplit']
-        grp.attrs['Beam'] = project.sessions[0].drxBeam
+        grp.attrs['Beam'] = project.sessions[0].drx_beam
         grp.attrs['DRX_Gain'] = obsS.gain
         grp.attrs['sample_rate'] = float(FILTER_CODES[obsS.filter])
         grp.attrs['sample_rate_Units'] = 'samples/s'
@@ -399,12 +399,12 @@ def fillFromSDF(f, sdfFilename, station=None):
         # Deal with stepped mode
         if obsS.mode == 'STEPPED':
             stps = grp.create_group('Pointing')
-            stps.attrs['StepType'] = 'RA/Dec' if obsS.RADec else 'Az/Alt'
+            stps.attrs['StepType'] = 'RA/Dec' if obsS.is_radec else 'Az/Alt'
             stps.attrs['col0'] = 'StartTime'
             stps.attrs['col0_Unit'] = 's'
-            stps.attrs['col1'] = 'RA' if obsS.RADec else 'Azimuth'
-            stps.attrs['col1_Unit'] = 'h' if obsS.RADec else 'd'
-            stps.attrs['col2'] = 'Dec' if obsS.RADec else 'Elevation'
+            stps.attrs['col1'] = 'RA' if obsS.is_radec else 'Azimuth'
+            stps.attrs['col1_Unit'] = 'h' if obsS.is_radec else 'd'
+            stps.attrs['col2'] = 'Dec' if obsS.is_radec else 'Elevation'
             stps.attrs['col2_Unit'] = 'd'
             stps.attrs['col3'] = 'Tuning1'
             stps.attrs['col3_Unit'] = 'Hz'
