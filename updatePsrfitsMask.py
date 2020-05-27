@@ -55,7 +55,7 @@ def main(args):
         srate = hdulist[0].header['OBSBW']*1e6
         LFFT = hdulist[1].data[0][12].size
         skM = nSubsChunk*nSubs
-        skN = srate / LFFT * (tInt / nSubs)
+        skN = srate // LFFT * (tInt // nSubs)
         if nPol == 1:
             skN *= 2
         skLimits = kurtosis.get_limits(args.sk_sigma, skM, N=1.0*skN)
@@ -87,7 +87,7 @@ def main(args):
         flagged = 0
         processed = 0
         sk = numpy.zeros((nPol, LFFT)) - 99.99
-        for i in range(0, (len(hdulist[1].data)/nSubsChunk)*nSubsChunk, nSubsChunk):
+        for i in range(0, (len(hdulist[1].data)//nSubsChunk)*nSubsChunk, nSubsChunk):
             ## Load in the current block of data
             blockData = []
             blockMask = None
