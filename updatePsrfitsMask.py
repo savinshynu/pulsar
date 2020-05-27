@@ -55,7 +55,7 @@ def main(args):
         srate = hdulist[0].header['OBSBW']*1e6
         LFFT = hdulist[1].data[0][12].size
         skM = nSubsChunk*nSubs
-        skN = srate // LFFT * (tInt // nSubs)
+        skN = srate // LFFT * (tInt / nSubs)
         if nPol == 1:
             skN *= 2
         skLimits = kurtosis.get_limits(args.sk_sigma, skM, N=1.0*skN)
