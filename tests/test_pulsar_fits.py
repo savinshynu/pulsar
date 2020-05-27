@@ -77,7 +77,7 @@ def _test_generator(script):
             try:
                 cmd = ['python',]
                 cmd.extend(script.split())
-                cmd.append(_FILENAME)
+                cmd.append(self._FITSNAME)
                 status = subprocess.check_call(cmd, stdout=logfile)
             except subprocess.CalledProcessError:
                 status = 1
