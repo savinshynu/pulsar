@@ -48,7 +48,7 @@ class pulsar_fits_tests(unittest.TestCase):
         if not os.path.exists(self._FITSNAME):
             subprocess.check_call(['../../writePsrfits2.py',
                                    '--source=B1919+21', '--ra=19:21:44.815', '--dec=21:53:02.25',
-                                   _FILENAME], cwd='data')
+                                   os.path.basename(_FILENAME)], cwd=os.path.dirname(_FILENAME))
             fitsname = glob.glob(os.path.join('data', '*.fits'))[0]
             subprocess.check_call(['mv', fitsname, self._FITSNAME])
             
