@@ -238,19 +238,39 @@ def main(args):
             break
             
         ## Load in some frames
-        rFrames = deque()
-        for i in xrange(tunepol):
-            try:
-                rFrames.append( RawDRXFrame(fh.read(drx.FrameSize)) )
-                #print rFrames[-1].parseID(), rFrames[-1].timeTag, c, i
-            except errors.eofError:
-                eofFound = True
-                buffer.append(rFrames)
-                break
-            except errors.syncError:
-                continue
+        if not buffer.overfilled:
+            rFrames = deque()
+            for i in xrange(tunepol):
+                try:
+                    rFrames.append( RawDRXFrame(fh.read(drx.FrameSize)) )
+                    #print rFrames[-1].parseID(), rFrames[-1].timeTag, c, i
+                except errors.eofError:
+                    eofFound = True
+                    buffer.append(rFrames)
+                    break
+                except errors.syncError:
+                    continue
                 
-        buffer.append(rFrames)
+            buffer.append(rFrames)
+            
+        timetag = buffer.peek()
+        if timetag is None:
+            # Continue adding frames if nothing comes out.
+            continue
+        else:
+            # Otherwise, make sure we are on track
+            try:
+                missing = (timetag - ttLast - ttSkip) / float(ttSkip)
+                if int(missing) == missing and missing < 50:
+                    ## This is kind of black magic down here
+                    for m in range(int(missing)):
+                        m = timetag + ttSkip*(m+1)
+                        baseframe = copy.deepcopy(rFrames[0])
+                        baseframe[14:24] = struct.pack('>HQ', struct.unpack('>HQ', baseframe[14:24])[0], m)
+                        baseframe[32:] = '\x00'*4096
+                        buffer.append(baseframe)
+            except NameError:
+                pass    
         rFrames = buffer.get()
         
         ## Continue adding frames if nothing comes out.
