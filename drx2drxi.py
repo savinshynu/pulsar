@@ -260,17 +260,19 @@ def main(args):
         else:
             # Otherwise, make sure we are on track
             try:
-                missing = (timetag - ttLast - ttSkip) / float(ttSkip)
-                if int(missing) == missing and missing < 50:
-                    ## This is kind of black magic down here
-                    for m in range(int(missing)):
-                        m = timetag + ttSkip*(m+1)
-                        baseframe = copy.deepcopy(rFrames[0])
-                        baseframe[14:24] = struct.pack('>HQ', struct.unpack('>HQ', baseframe[14:24])[0], m)
-                        baseframe[32:] = '\x00'*4096
-                        buffer.append(baseframe)
+                timetag = timetag - tNomX # T_NOM has been subtracted from ttLast
+                if timetag != ttLast + ttSkip:
+                    missing = (timetag - ttLast - ttSkip) / float(ttSkip)
+                    if int(missing) == missing and missing < 50:
+                        ## This is kind of black magic down here
+                        for m in range(int(missing)):
+                            m = ttLast + ttSkip*(m+1) + tNomX   # T_NOM has been subtracted from ttLast
+                            baseframe = copy.deepcopy(rFrames[0])
+                            baseframe[14:24] = struct.pack('>HQ', struct.unpack('>HQ', baseframe[14:24])[0], m)
+                            baseframe[32:] = '\x00'*4096
+                            buffer.append(baseframe)
             except NameError:
-                pass    
+                pass
         rFrames = buffer.get()
         
         ## Continue adding frames if nothing comes out.
