@@ -29,7 +29,7 @@ from residuals import read_residuals
 import lsl
 from lsl import astro
 from lsl.misc.dedispersion import _D, delay, incoherent
-from lsl.misc.mathutil import to_dB, from_dB
+from lsl.misc.mathutils import to_dB, from_dB
 from lsl.misc import parser as aph
 
 import wx
