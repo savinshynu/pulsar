@@ -426,6 +426,10 @@ class SinglePulse_GUI(object):
                 if len(newData.shape) == 2:
                     newData = newData[:,[0,1,2,3,4]]
                     data.append( newData )
+                elif len(newData.shape) == 1 and newData.size > 0:
+                    newData = newData.reshape(1,-1)
+                    newData = newData[:,[0,1,2,3,4]]
+                    data.append( newData )
             except ValueError:
                 pass
                 
@@ -3505,7 +3509,7 @@ if __name__ == "__main__":
         description='read in a collection of .singlepulse files and plot them interactively', 
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
         )
-    parser.add_argument('filename', type=str, nargs='?', 
+    parser.add_argument('filename', type=str, nargs='+', 
                         help='filename to display')
     parser.add_argument('-t', '--threshold', type=aph.positive_float, default=5.0, 
                         help='minimum pulsar threshold to display in sigma')

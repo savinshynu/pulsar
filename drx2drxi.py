@@ -234,19 +234,41 @@ def main(args):
             break
             
         ## Load in some frames
-        rFrames = deque()
-        for i in range(tunepol):
-            try:
-                rFrames.append( RawDRXFrame(fh.read(drx.FRAME_SIZE)) )
-                #print(rFrames[-1].id, rFrames[-1].timetag, c, i)
-            except errors.EOFError:
-                eofFound = True
-                buffer.append(rFrames)
-                break
-            except errors.SyncError:
-                continue
+        if not buffer.overfilled:
+            rFrames = deque()
+            for i in range(tunepol):
+                try:
+                    rFrames.append( RawDRXFrame(fh.read(drx.FRAME_SIZE)) )
+                    #print rFrames[-1].id, rFrames[-1].timetag, c, i
+                except errors.EOFError:
+                    eofFound = True
+                    buffer.append(rFrames)
+                    break
+                except errors.SyncError:
+                    continue
                 
-        buffer.append(rFrames)
+            buffer.append(rFrames)
+            
+        timetag = buffer.peek()
+        if timetag is None:
+            # Continue adding frames if nothing comes out.
+            continue
+        else:
+            # Otherwise, make sure we are on track
+            try:
+                timetag = timetag - tNomX # T_NOM has been subtracted from ttLast
+                if timetag != ttLast + ttSkip:
+                    missing = (timetag - ttLast - ttSkip) / float(ttSkip)
+                    if int(missing) == missing and missing < 50:
+                        ## This is kind of black magic down here
+                        for m in range(int(missing)):
+                            m = ttLast + ttSkip*(m+1) + tNomX   # T_NOM has been subtracted from ttLast
+                            baseframe = copy.deepcopy(rFrames[0])
+                            baseframe[14:24] = struct.pack('>HQ', struct.unpack('>HQ', baseframe[14:24])[0], m)
+                            baseframe[32:] = '\x00'*4096
+                            buffer.append(baseframe)
+            except NameError:
+                pass
         rFrames = buffer.get()
         
         ## Continue adding frames if nothing comes out.
