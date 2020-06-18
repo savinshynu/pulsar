@@ -1,14 +1,16 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Given a DR spectrometer file, create one of more PSRFITS file(s).
-
-$Rev$
-$LastChangedBy$
-$LastChangedDate$
 """
 
+# Python2 compatibility
+from __future__ import print_function, division
+try:
+    input = raw_input
+except NameError:
+    pass
+    
 import os
 import sys
 import numpy
@@ -29,11 +31,16 @@ from _psr import *
 
 
 def resolveTarget(name):
-    import urllib
+    try:
+        from urllib2 import urlopen
+        from urllib import urlencode, quote_plus
+    except ImportError:
+        from urllib.request import urlopen
+        from urllib.parse import urlencode, quote_plus
     from xml.etree import ElementTree
     
     try:
-        result = urllib.urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % urllib.quote_plus(name))
+        result = urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % quote_plus(name))
         tree = ElementTree.fromstring(result.read())
         target = tree.find('Target')
         service = target.find('Resolver')
@@ -55,8 +62,8 @@ def main(args):
     if args.source is not None:
         if args.ra is None or args.dec is None:
             tempRA, tempDec, tempService = resolveTarget('PSR '+args.source)
-            print "%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService)
-            out = raw_input('=> Accept? [Y/n] ')
+            print("%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService))
+            out = input('=> Accept? [Y/n] ')
             if out == 'n' or out == 'N':
                 sys.exit()
             else:
@@ -75,17 +82,17 @@ def main(args):
     
     # Open
     idf = DRSpecFile(args.filename)
-    nFramesFile = idf.getInfo('nFrames')
-    LFFT = idf.getInfo('LFFT')
+    nFramesFile = idf.get_info('nframe')
+    LFFT = idf.get_info('LFFT')
     
     # Load in basic information about the data
-    srate = idf.getInfo('sampleRate')
-    beam = idf.getInfo('beam')
-    centralFreq1 = idf.getInfo('freq1')
-    centralFreq2 = idf.getInfo('freq2')
-    dataProducts = idf.getInfo('dataProducts')
-    isLinear = ('XX' in dataProducts) or ('YY' in dataProducts)
-    tInt = idf.getInfo('tInt')
+    srate = idf.get_info('sample_rate')
+    beam = idf.get_info('beam')
+    central_freq1 = idf.get_info('freq1')
+    central_freq2 = idf.get_info('freq2')
+    data_products = idf.get_info('data_products')
+    isLinear = ('XX' in data_products) or ('YY' in data_products)
+    tInt = idf.get_info('tint')
     
     # Offset, if needed
     o = 0
@@ -97,27 +104,27 @@ def main(args):
     nsblk = 32
     
     ## Date
-    beginDate = ephem.Date(astro.unix_to_utcjd(idf.getInfo('tStart')) - astro.DJD_OFFSET)
-    beginTime = beginDate.datetime()
-    mjd = astro.jd_to_mjd(astro.unix_to_utcjd(idf.getInfo('tStart')))
+    beginDate = idf.get_info('start_time')
+    beginTime = beginDate.datetime
+    mjd = beginDate.mjd
     mjd_day = int(mjd)
     mjd_sec = (mjd-mjd_day)*86400
     if args.output is None:
         args.output = "drx_%05d_%s" % (mjd_day, args.source.replace(' ', ''))
         
     # File summary
-    print "Input Filename: %s" % args.filename
-    print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
-    print "Beam: %i" % beam
-    print "Tunings: %.1f Hz, %.1f Hz" % (centralFreq1, centralFreq2)
-    print "Sample Rate: %i Hz" % srate
-    print "Sample Time: %f s" % tInt
-    print "Sub-block Time: %f s" % (tInt*nsblk,)
-    print "Data Products: %s" % ','.join(dataProducts)
-    print "Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile)
-    print "---"
-    print "Offset: %.3f s (%i frames)" % (o, o/tInt)
-    print "---"
+    print("Input Filename: %s" % args.filename)
+    print("Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd))
+    print("Beam: %i" % beam)
+    print("Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2))
+    print("Sample Rate: %i Hz" % srate)
+    print("Sample Time: %f s" % tInt)
+    print("Sub-block Time: %f s" % (tInt*nsblk,))
+    print("Data Products: %s" % ','.join(data_products))
+    print("Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile))
+    print("---")
+    print("Offset: %.3f s (%.0f frames)" % (o, o/tInt))
+    print("---")
     
     # Create the output PSRFITS file(s)
     pfu_out = []
@@ -133,8 +140,8 @@ def main(args):
             return y
     else:
         args.no_summing = True
-        polNames = ''.join(dataProducts)
-        nPols = len(dataProducts)
+        polNames = ''.join(data_products)
+        nPols = len(data_products)
         reduceEngine = lambda x: x.astype(numpy.float32)
         
     if args.four_bit_data:
@@ -142,7 +149,7 @@ def main(args):
     else:
         OptimizeDataLevels = OptimizeDataLevels8Bit
         
-    for t in xrange(1, 2+1):
+    for t in range(1, 2+1):
         ## Basic structure and bounds
         pfo = pfu.psrfits()
         pfo.basefilename = "%s_b%it%i" % (args.output, beam, t)
@@ -152,9 +159,9 @@ def main(args):
         
         ## Frequency, bandwidth, and channels
         if t == 1:
-            pfo.hdr.fctr=centralFreq1/1e6
+            pfo.hdr.fctr=central_freq1/1e6
         else:
-            pfo.hdr.fctr=centralFreq2/1e6
+            pfo.hdr.fctr=central_freq2/1e6
         pfo.hdr.BW = srate/1e6
         pfo.hdr.nchan = LFFT
         pfo.hdr.df = srate/1e6/LFFT
@@ -184,14 +191,14 @@ def main(args):
         
         ## Setup the subintegration structure
         pfo.sub.tsubint = pfo.hdr.dt*pfo.hdr.nsblk
-        pfo.sub.bytes_per_subint = pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk*pfo.hdr.nbits/8
+        pfo.sub.bytes_per_subint = pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk*pfo.hdr.nbits//8
         pfo.sub.dat_freqs   = pfu.malloc_doublep(pfo.hdr.nchan*8)				# 8-bytes per double @ LFFT channels
         pfo.sub.dat_weights = pfu.malloc_floatp(pfo.hdr.nchan*4)				# 4-bytes per float @ LFFT channels
         pfo.sub.dat_offsets = pfu.malloc_floatp(pfo.hdr.nchan*pfo.hdr.npol*4)		# 4-bytes per float @ LFFT channels per pol.
         pfo.sub.dat_scales  = pfu.malloc_floatp(pfo.hdr.nchan*pfo.hdr.npol*4)		# 4-bytes per float @ LFFT channels per pol.
         if args.four_bit_data:
             pfo.sub.data = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk)	# 1-byte per unsigned char @ (LFFT channels x pols. x nsblk sub-integrations) samples
-            pfo.sub.rawdata = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk/2)	# 4-bits per nibble @ (LFFT channels x pols. x nsblk sub-integrations) samples
+            pfo.sub.rawdata = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk//2)	# 4-bits per nibble @ (LFFT channels x pols. x nsblk sub-integrations) samples
         else:
             pfo.sub.rawdata = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk)	# 1-byte per unsigned char @ (LFFT channels x pols. x nsblk sub-integrations) samples
             
@@ -200,7 +207,7 @@ def main(args):
         pfu_out.append(pfo)
         
     freqBaseMHz = numpy.fft.fftshift( numpy.fft.fftfreq(LFFT, d=1.0/srate) ) / 1e6
-    for i in xrange(len(pfu_out)):
+    for i in range(len(pfu_out)):
         # Define the frequencies available in the file (in MHz)
         pfu.convert2_double_array(pfu_out[i].sub.dat_freqs, freqBaseMHz + pfu_out[i].hdr.fctr, LFFT)
         
@@ -222,7 +229,7 @@ def main(args):
     # Calculate the SK limites for weighting
     if (not args.no_sk_flagging) and isLinear:
         skN = int(tInt*srate / LFFT)
-        skLimits = kurtosis.getLimits(4.0, M=1.0*nsblk, N=1.0*skN)
+        skLimits = kurtosis.get_limits(4.0, M=1.0*nsblk, N=1.0*skN)
         
         GenerateMask = lambda x: ComputePseudoSKMask(x, LFFT, skN, skLimits[0], skLimits[1])
     else:
@@ -233,11 +240,8 @@ def main(args):
             return flag
             
     # Create the progress bar so that we can keep up with the conversion.
-    try:
-        pbar = progress.ProgressBarPlus(max=nFramesFile/chunkSize, span=55)
-    except AttributeError:
-        pbar = progress.ProgressBar(max=nFramesFile/chunkSize, span=55)
-        
+    pbar = progress.ProgressBarPlus(max=nFramesFile//chunkSize, span=55)
+    
     # Go!
     done = False
     
@@ -247,7 +251,7 @@ def main(args):
         try:
             readT, t, data = idf.read(chunkTime)
             siCount += 1
-        except errors.eofError:
+        except errors.EOFError:
             break
             
         ## FFT (really promote and reshape since the data are already spectra)

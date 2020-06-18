@@ -51,7 +51,7 @@ PyObject *OptimizeDataLevels8Bit(PyObject *self, PyObject *args, PyObject *kwds)
 	npy_intp dims[2];
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
-	if( bzero != NULL ) {
+	if( bzero != NULL && bzero != Py_None ) {
 		zeroF = (PyArrayObject*) PyArray_ContiguousFromObject(bzero, NPY_FLOAT32, 2, 2);
 		if(zeroF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output bzero array to 2-D float32");
@@ -75,7 +75,7 @@ PyObject *OptimizeDataLevels8Bit(PyObject *self, PyObject *args, PyObject *kwds)
 	
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
-	if( bscale != NULL ) {
+	if( bscale != NULL && bscale != Py_None ) {
 		scaleF = (PyArrayObject*) PyArray_ContiguousFromObject(bzero, NPY_FLOAT32, 2, 2);
 		if(scaleF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output bscale array to 2-D float32");
@@ -99,7 +99,7 @@ PyObject *OptimizeDataLevels8Bit(PyObject *self, PyObject *args, PyObject *kwds)
 	
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nSamps;
-	if( bdata != NULL ) {
+	if( bdata != NULL && bdata != Py_None ) {
 		dataF = (PyArrayObject*) PyArray_ContiguousFromObject(bdata, NPY_UINT8, 2, 2);
 		if(dataF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output bdata array to 2-D uint8");
@@ -236,7 +236,7 @@ PyObject *OptimizeDataLevels4Bit(PyObject *self, PyObject *args, PyObject *kwds)
 	npy_intp dims[2];
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
-	if( bzero != NULL ) {
+	if( bzero != NULL && bzero != Py_None ) {
 		zeroF = (PyArrayObject*) PyArray_ContiguousFromObject(bzero, NPY_FLOAT32, 2, 2);
 		if(zeroF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output bzero array to 2-D float32");
@@ -260,7 +260,7 @@ PyObject *OptimizeDataLevels4Bit(PyObject *self, PyObject *args, PyObject *kwds)
 	
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
-	if( bscale != NULL ) {
+	if( bscale != NULL && bscale != Py_None ) {
 		scaleF = (PyArrayObject*) PyArray_ContiguousFromObject(bzero, NPY_FLOAT32, 2, 2);
 		if(scaleF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output bscale array to 2-D float32");
@@ -284,7 +284,7 @@ PyObject *OptimizeDataLevels4Bit(PyObject *self, PyObject *args, PyObject *kwds)
 	
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nSamps;
-	if( bdata != NULL ) {
+	if( bdata != NULL && bdata != Py_None ) {
 		dataF = (PyArrayObject*) PyArray_ContiguousFromObject(bdata, NPY_UINT8, 2, 2);
 		if(dataF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output bdata array to 2-D uint8");

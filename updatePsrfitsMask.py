@@ -1,11 +1,13 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
+
+# Python2 compatibility
+from __future__ import print_function, division
 
 import os
 import sys
 import numpy
-import pyfits
 import argparse
+from astropy.io import fits as astrofits
 
 import lsl.common.progress as progress
 from lsl.statistics import robust, kurtosis
@@ -32,10 +34,10 @@ def main(args):
         args.frequencies = []
         
     for filename in args.filename:
-        print "Working on '%s'..." % os.path.basename(filename)
+        print("Working on '%s'..." % os.path.basename(filename))
         
         # Open the PRSFITS file
-        hdulist = pyfits.open(filename, mode='update', memmap=True)
+        hdulist = astrofits.open(filename, mode='update', memmap=True)
         
         # Figure out the integration time per sub-integration so we know how 
         # many sections to work with at a time
@@ -43,23 +45,23 @@ def main(args):
         nSubs = hdulist[1].header['NSBLK']
         tInt = hdulist[1].data[0][0]
         nSubsChunk = int( numpy.ceil( args.duration/tInt ) )
-        print "  Polarizations: %i" % nPol
-        print "  Sub-integration time: %.3f ms" % (tInt/nSubs*1000.0,)
-        print "  Sub-integrations per block: %i" % nSubs
-        print "  Block integration time: %.3f ms" % (tInt*1000.0,)
-        print "  Working in chunks of %i blocks (%.3f s)" % (nSubsChunk, nSubsChunk*tInt)
+        print("  Polarizations: %i" % nPol)
+        print("  Sub-integration time: %.3f ms" % (tInt/nSubs*1000.0,))
+        print("  Sub-integrations per block: %i" % nSubs)
+        print("  Block integration time: %.3f ms" % (tInt*1000.0,))
+        print("  Working in chunks of %i blocks (%.3f s)" % (nSubsChunk, nSubsChunk*tInt))
         
         # Figure out the SK parameters to use
         srate = hdulist[0].header['OBSBW']*1e6
         LFFT = hdulist[1].data[0][12].size
         skM = nSubsChunk*nSubs
-        skN = srate / LFFT * (tInt / nSubs)
+        skN = srate // LFFT * (tInt / nSubs)
         if nPol == 1:
             skN *= 2
-        skLimits = kurtosis.getLimits(args.sk_sigma, skM, N=1.0*skN)
-        print "  (p)SK M: %i" % (nSubsChunk*nSubs,)
-        print "  (p)SK N: %i" % skN
-        print "  (p)SK Limits: %.4f <= valid <= %.4f" % skLimits
+        skLimits = kurtosis.get_limits(args.sk_sigma, skM, N=1.0*skN)
+        print("  (p)SK M: %i" % (nSubsChunk*nSubs,))
+        print("  (p)SK N: %i" % skN)
+        print("  (p)SK Limits: %.4f <= valid <= %.4f" % skLimits)
         
         # Figure out what to mask for the specified frequencies and report
         toMask = []
@@ -71,9 +73,9 @@ def main(args):
         if len(toMask) > 0:
             toMask = list(set(toMask))
             toMask.sort()
-            print "  Masking Channels:"
+            print("  Masking Channels:")
             for c in toMask:
-                print "    %i -> %.3f MHz" % (c, freq[c])
+                print("    %i -> %.3f MHz" % (c, freq[c]))
                 
         # Setup the progress bar
         try:
@@ -85,11 +87,11 @@ def main(args):
         flagged = 0
         processed = 0
         sk = numpy.zeros((nPol, LFFT)) - 99.99
-        for i in xrange(0, (len(hdulist[1].data)/nSubsChunk)*nSubsChunk, nSubsChunk):
+        for i in range(0, (len(hdulist[1].data)//nSubsChunk)*nSubsChunk, nSubsChunk):
             ## Load in the current block of data
             blockData = []
             blockMask = None
-            for j in xrange(i, i+nSubsChunk):
+            for j in range(i, i+nSubsChunk):
                 ### Access the correct subintegration
                 subint = hdulist[1].data[j]
                 
@@ -110,7 +112,7 @@ def main(args):
                 
                 ### Apply the scaling/offset to the data and save the results 
                 ### to blockData
-                for k in xrange(nSubs):
+                for k in range(nSubs):
                     d = data[:,:,k]*bscl + bzero
                     d.shape += (1,)
                     blockData.append( d )
@@ -124,9 +126,9 @@ def main(args):
             blockData = numpy.concatenate(blockData, axis=2)
             
             ## Compute the S-K statistics
-            for p in xrange(nPol):
-                for l in xrange(LFFT):
-                    sk[p,l] = kurtosis.spectralPower(blockData[p,l,:], N=1.0*skN)
+            for p in range(nPol):
+                for l in range(LFFT):
+                    sk[p,l] = kurtosis.spectral_power(blockData[p,l,:], N=1.0*skN)
                     
             ## Compute the new mask - both SK and the frequency flagging
             newMask = numpy.where( (sk < skLimits[0]) | (sk > skLimits[1]), 0.0, 1.0 )
@@ -142,7 +144,7 @@ def main(args):
                 blockMask *= newMask
                 
             ## Update file
-            for j in xrange(i, i+nSubsChunk):
+            for j in range(i, i+nSubsChunk):
                 hdulist[1].data[j][13] = blockMask
                 
             ## Update the counters

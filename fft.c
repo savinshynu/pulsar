@@ -72,7 +72,7 @@ PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
 	dims[2] = (npy_intp) (nSamps/nChan);
-	if( signalsF != NULL ) {
+	if( signalsF != NULL && signalsF != Py_None ) {
 		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_COMPLEX64, 3, 3);
 		if(dataF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 3-D complex64");
@@ -221,7 +221,7 @@ PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject *kwds) 
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
 	dims[2] = (npy_intp) (nSamps/nChan);
-	if( signalsF != NULL ) {
+	if( signalsF != NULL && signalsF != Py_None ) {
 		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_COMPLEX64, 3, 3);
 		if(dataF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 3-D complex64");
@@ -393,7 +393,7 @@ PyObject *PhaseRotator(PyObject *self, PyObject *args, PyObject *kwds) {
 	dims[0] = (npy_intp) nStand;
 	dims[1] = (npy_intp) nChan;
 	dims[2] = (npy_intp) nFFT;
-	if(signalsF != NULL) {
+	if( signalsF != NULL && signalsF != Py_None ) {
 		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_COMPLEX64, 3, 3);
 		if(dataF == NULL) {
 			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 3-D complex64");

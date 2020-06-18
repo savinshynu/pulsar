@@ -1,14 +1,16 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Given an HDF5 file from drspec2hdf.py, create one of more PSRFITS file(s).
-
-$Rev$
-$LastChangedBy$
-$LastChangedDate$
 """
 
+# Python2 compatibility
+from __future__ import print_function, division
+try:
+    input = raw_input
+except NameError:
+    pass
+    
 import os
 import sys
 import h5py
@@ -28,11 +30,16 @@ from _psr import *
 
 
 def resolveTarget(name):
-    import urllib
+    try:
+        from urllib2 import urlopen
+        from urllib import urlencode, quote_plus
+    except ImportError:
+        from urllib.request import urlopen
+        from urllib.parse import urlencode, quote_plus
     from xml.etree import ElementTree
     
     try:
-        result = urllib.urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % urllib.quote_plus(name))
+        result = urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % quote_plus(name))
         tree = ElementTree.fromstring(result.read())
         target = tree.find('Target')
         service = target.find('Resolver')
@@ -67,8 +74,8 @@ def main(args):
             ## Save
             args.source = sourceName
             
-        except Exception, e:
-            print "WARNING: Could not load source name from file"
+        except Exception as e:
+            print("WARNING: Could not load source name from file")
             
     if args.ra is None or args.dec is None:
         try:
@@ -89,15 +96,15 @@ def main(args):
             args.ra = '%02d:%02d:%04.1f' % (int(ra), int(ra * 60) % 60, ra * 3600 % 60)
             args.dec = '%s%02d:%02d:%04.1f' % (decSign, int(dec), int(dec * 60) % 60, dec * 3600 % 60)
             
-        except Exception, e:
-            print "WARNING: Could not load source RA/dec. from file"
+        except Exception as e:
+            print("WARNING: Could not load source RA/dec. from file")
             
     # Find out where the source is if needed
     if args.source is not None:
         if args.ra is None or args.dec is None:
             tempRA, tempDec, tempService = resolveTarget('PSR '+args.source)
-            print "%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService)
-            out = raw_input('=> Accept? [Y/n] ')
+            print("%s resolved to %s, %s using '%s'" % (args.source, tempRA, tempDec, tempService))
+            out = input('=> Accept? [Y/n] ')
             if out == 'n' or out == 'N':
                 sys.exit()
             else:
@@ -119,21 +126,21 @@ def main(args):
     obs1tuning2 = obs1['Tuning2']
     
     nFramesFile = obs1['time'].shape[0]
-    srate = float(obs1.attrs['sampleRate'])
+    srate = float(obs1.attrs['sample_rate'])
     beam = int(obs1.attrs['Beam'])
     LFFT = int(obs1.attrs['LFFT'])
-    nChan = int(obs1.attrs['nChan'])
-    chanOffset = LFFT - nChan		# Packing offset to deal with old HDF5 files that contain only LFFT-1 channels
-    centralFreq1 = obs1tuning1['freq'][LFFT/2-chanOffset]
-    centralFreq2 = obs1tuning2['freq'][LFFT/2-chanOffset]
-    dataProducts = list(obs1tuning1)
-    dataProducts.sort()
+    nchan = int(obs1.attrs['nchan'])
+    chanOffset = LFFT - nchan		# Packing offset to deal with old HDF5 files that contain only LFFT-1 channels
+    central_freq1 = obs1tuning1['freq'][LFFT//2-chanOffset]
+    central_freq2 = obs1tuning2['freq'][LFFT//2-chanOffset]
+    data_products = list(obs1tuning1)
+    data_products.sort()
     try:
-        del dataProducts[ dataProducts.index('Saturation') ]
+        del data_products[ data_products.index('Saturation') ]
     except ValueError:
         pass
     try:
-        del dataProducts[ dataProducts.index('freq') ]
+        del data_products[ data_products.index('freq') ]
     except ValueError:
         pass
     tInt = obs1.attrs['tInt']
@@ -151,20 +158,20 @@ def main(args):
         args.output = "drx_%05d_%s" % (mjd_day, args.source.replace(' ', ''))
         
     # File summary
-    print "Input Filename: %s" % args.filename
-    print "Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd)
-    print "Beam: %i" % beam
-    print "Tunings: %.1f Hz, %.1f Hz" % (centralFreq1, centralFreq2)
-    print "Sample Rate: %i Hz" % srate
-    print "Sample Time: %f s" % tInt
-    print "Sub-block Time: %f s" % (tInt*nsblk,)
-    print "Data Products: %s" % ','.join(dataProducts)
-    print "Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile)
-    print "---"
+    print("Input Filename: %s" % args.filename)
+    print("Date of First Frame: %s (MJD=%f)" % (str(beginDate),mjd))
+    print("Beam: %i" % beam)
+    print("Tunings: %.1f Hz, %.1f Hz" % (central_freq1, central_freq2))
+    print("Sample Rate: %i Hz" % srate)
+    print("Sample Time: %f s" % tInt)
+    print("Sub-block Time: %f s" % (tInt*nsblk,))
+    print("Data Products: %s" % ','.join(data_products))
+    print("Frames: %i (%.3f s)" % (nFramesFile, tInt*nFramesFile))
+    print("---")
     
     # Create the output PSRFITS file(s)
     pfu_out = []
-    if 'XX' in dataProducts and 'YY' in dataProducts and (not args.no_summing):
+    if 'XX' in data_products and 'YY' in data_products and (not args.no_summing):
         polNames = 'I'
         nPols = 1
         def reduceEngine(x):
@@ -176,8 +183,8 @@ def main(args):
             return y
     else:
         args.no_summing = True
-        polNames = ''.join(dataProducts)
-        nPols = len(dataProducts)
+        polNames = ''.join(data_products)
+        nPols = len(data_products)
         reduceEngine = lambda x: x
         
     if args.four_bit_data:
@@ -185,7 +192,7 @@ def main(args):
     else:
         OptimizeDataLevels = OptimizeDataLevels8Bit
         
-    for t in xrange(1, 2+1):
+    for t in range(1, 2+1):
         ## Basic structure and bounds
         pfo = pfu.psrfits()
         pfo.basefilename = "%s_b%it%i" % (args.output, beam, t)
@@ -195,9 +202,9 @@ def main(args):
         
         ## Frequency, bandwidth, and channels
         if t == 1:
-            pfo.hdr.fctr=centralFreq1/1e6
+            pfo.hdr.fctr=central_freq1/1e6
         else:
-            pfo.hdr.fctr=centralFreq2/1e6
+            pfo.hdr.fctr=central_freq2/1e6
         pfo.hdr.BW = srate/1e6
         pfo.hdr.nchan = LFFT
         pfo.hdr.df = srate/1e6/LFFT
@@ -227,14 +234,14 @@ def main(args):
         
         ## Setup the subintegration structure
         pfo.sub.tsubint = pfo.hdr.dt*pfo.hdr.nsblk
-        pfo.sub.bytes_per_subint = pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk*pfo.hdr.nbits/8
+        pfo.sub.bytes_per_subint = pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk*pfo.hdr.nbits//8
         pfo.sub.dat_freqs   = pfu.malloc_doublep(pfo.hdr.nchan*8)				# 8-bytes per double @ LFFT channels
         pfo.sub.dat_weights = pfu.malloc_floatp(pfo.hdr.nchan*4)				# 4-bytes per float @ LFFT channels
         pfo.sub.dat_offsets = pfu.malloc_floatp(pfo.hdr.nchan*pfo.hdr.npol*4)		# 4-bytes per float @ LFFT channels per pol.
         pfo.sub.dat_scales  = pfu.malloc_floatp(pfo.hdr.nchan*pfo.hdr.npol*4)		# 4-bytes per float @ LFFT channels per pol.
         if args.four_bit_data:
             pfo.sub.data = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk)	# 1-byte per unsigned char @ (LFFT channels x pols. x nsblk sub-integrations) samples
-            pfo.sub.rawdata = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk/2)	# 4-bits per nibble @ (LFFT channels x pols. x nsblk sub-integrations) samples
+            pfo.sub.rawdata = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk//2)	# 4-bits per nibble @ (LFFT channels x pols. x nsblk sub-integrations) samples
         else:
             pfo.sub.rawdata = pfu.malloc_ucharp(pfo.hdr.nchan*pfo.hdr.npol*pfo.hdr.nsblk)	# 1-byte per unsigned char @ (LFFT channels x pols. x nsblk sub-integrations) samples
         ## Create and save it for later use
@@ -256,7 +263,7 @@ def main(args):
         pfu.convert2_float_array(pfu_out[i].sub.dat_weights, numpy.ones(LFFT),  LFFT)
         pfu.set_float_value(pfu_out[i].sub.dat_weights, 0,      0)
         pfu.set_float_value(pfu_out[i].sub.dat_weights, LFFT-1, 0)
-        for j in xrange(chanOffset):
+        for j in range(chanOffset):
             pfu.set_float_value(pfu_out[i].sub.dat_weights, j, 0)
             
         # Define the data scaling (default is a scale of one and an offset of zero)
@@ -268,9 +275,9 @@ def main(args):
     chunkSize = nsblk
     
     # Calculate the SK limites for weighting
-    if (not args.no_sk_flagging) and 'XX' in dataProducts and 'YY' in dataProducts:
+    if (not args.no_sk_flagging) and 'XX' in data_products and 'YY' in data_products:
         skN = int(tInt*srate / LFFT)
-        skLimits = kurtosis.getLimits(4.0, M=1.0*nsblk, N=1.0*skN)
+        skLimits = kurtosis.get_limits(4.0, M=1.0*nsblk, N=1.0*skN)
         
         GenerateMask = lambda x: ComputePseudoSKMask(x, LFFT, skN, skLimits[0], skLimits[1])
     else:
@@ -281,32 +288,29 @@ def main(args):
             return flag
             
     # Create the progress bar so that we can keep up with the conversion.
-    try:
-        pbar = progress.ProgressBarPlus(max=nFramesFile/chunkSize, span=55)
-    except AttributeError:
-        pbar = progress.ProgressBar(max=nFramesFile/chunkSize, span=55)
-        
+    pbar = progress.ProgressBarPlus(max=nFramesFile//chunkSize, span=55)
+    
     # Go!
     done = False
     
     siCount = 0
     nSubInts = nFramesFile / chunkSize
-    for i in xrange(nSubInts):
+    for i in range(nSubInts):
         ## Read in the data
-        data = numpy.zeros((2*len(dataProducts), LFFT*chunkSize), dtype=numpy.float64)
+        data = numpy.zeros((2*len(data_products), LFFT*chunkSize), dtype=numpy.float64)
         
-        for j in xrange(chunkSize):
+        for j in range(chunkSize):
             jP = j + i*chunkSize
             try:
                 if obs1['time'][jP] > oTime + 1.001*tInt:
-                    print 'Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, obs1['time'][jP], oTime, tInt)
+                    print('Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, obs1['time'][jP], oTime, tInt))
             except NameError:
                 pass
             oTime = obs1['time'][jP]
             
             k = 0
             for t in (obs1tuning1, obs1tuning2):
-                for p in dataProducts:
+                for p in data_products:
                     data[k, j*LFFT+chanOffset:(j+1)*LFFT] = t[p][jP,:]
                     k += 1
         siCount += 1

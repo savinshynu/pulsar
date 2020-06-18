@@ -3,6 +3,8 @@
 
 #include <complex.h>
 
+#include "py3_compat.h"
+
 // Dispersion constant in MHz^2 s / pc cm^-3
 #define DCONST (double) 4.148808e3
 

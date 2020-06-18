@@ -1,14 +1,16 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """
 Given a PSRFITS file, create a HDF5 file in the standard LWA1 format.
-
-$Rev$
-$LastChangedBy$
-$LastChangedDate$
 """
 
+# Python2 compatibility
+from __future__ import print_function, division
+try:
+    input = raw_input
+except NameError:
+    pass
+    
 import os
 import re
 import sys
@@ -17,8 +19,8 @@ import numpy
 import ephem
 import ctypes
 import getopt
-import pyfits
 from datetime import datetime
+from astropy.io import fits as astrofits
 
 import data as hdfData
 
@@ -30,7 +32,7 @@ _fnRE = re.compile('.*_b(?P<beam>[1-4])(t(?P<tuning>[12]))?_.*\.fits')
 
 
 def usage(exitCode=None):
-    print """writeHDF5FromPsrfits.py - Read in a PSRFITS file and create an HDF5 
+    print("""writeHDF5FromPsrfits.py - Read in a PSRFITS file and create an HDF5 )
 file in the standard LWA1 format.
 
 Usage: writeFromHDF5FromPsrfits.py [OPTIONS] file
@@ -41,8 +43,8 @@ Options:
                             seconds (default = 0)
 -d, --duration              Amount of time to save in seconds (default = 10)
 -o, --output                Output file basename
-"""
-
+""")
+    
     if exitCode is not None:
         sys.exit(exitCode)
     else:
@@ -60,9 +62,9 @@ def parseOptions(args):
     # Read in and process the command line flags
     try:
         opts, args = getopt.getopt(args, "ho:s:d:", ["help", "output=", "skip=", "duration="])
-    except getopt.GetoptError, err:
+    except getopt.GetoptError as err:
         # Print help information and exit:
-        print str(err) # will print something like "option -a not recognized"
+        print(str(err)) # will print something like "option -a not recognized"
         usage(exitCode=2)
         
     # Work through opts
@@ -96,7 +98,7 @@ def main(args):
     # Open the file and load in basic information about the observation's goal
     for c,filename in enumerate(filenames):
         ## Ready the PSRFITS file
-        hdulist = pyfits.open(filename, memmap=True)
+        hdulist = astrofits.open(filename, memmap=True)
         
         ## Try to find out the beam/tuning
         mtch = _fnRE.search(filename)
@@ -132,14 +134,14 @@ def main(args):
         tSubs = nSubs*tInt
         nPol = hdulist[1].header['NPOL']
         if nPol == 1:
-            dataProducts = ['I',]
+            data_products = ['I',]
         elif nPol == 2:
             if hdulist[0].header['FD_POLN'] == 'CIRC':
-                dataProducts = ['LL', 'RR']
+                data_products = ['LL', 'RR']
             else:
-                dataProducts = ['XX', 'YY']
+                data_products = ['XX', 'YY']
         else:
-            dataProducts = ['I', 'Q', 'U', 'V']
+            data_products = ['I', 'Q', 'U', 'V']
         nChunks = len(hdulist[1].data)
         
         ## File cross-validation to make sure that everything is in order
@@ -149,14 +151,14 @@ def main(args):
                 keywordOld = keyword+"Old"
                 valid = eval("%s == %s" % (keyword, keywordOld))
                 if not valid:
-                    print "ERROR:  Detail '%s' of %s does not match that of the first file" % (keyword, os.path.basename(filename))
-                    print "ERROR:  Aborting"
+                    print("ERROR:  Detail '%s' of %s does not match that of the first file" % (keyword, os.path.basename(filename)))
+                    print("ERROR:  Aborting")
                     validationPass = False
                     
             if not validationPass:
                 continue
                 
-        except NameError, e:
+        except NameError as e:
             sourceNameOld = sourceName
             raOld = ra
             decOld = dec
@@ -177,23 +179,23 @@ def main(args):
         config['duration'] = dur * tSubs
         
         ## Report
-        print "Filename: %s (%i of %i)" % (filename, c+1, len(filenames))
-        print "Date of First Frame: %s" % datetime.utcfromtimestamp(tStart)
-        print "Beam: %i" % beam
-        print "Tuning: %i" % tuning
-        print "Sample Rate: %i Hz" % srate
-        print "Tuning Frequency: %.3f Hz" % cFreq
-        print "---"
-        print "Target: %s" % sourceName
-        print "RA: %.3f hours" % (ra/15.0,)
-        print "Dec: %.3f degrees" % dec
-        print "Data Products: %s" % ','.join(dataProducts)
-        print "Integration Time: %.3f ms" % (tInt*1e3,)
-        print "Sub-integrations: %i (%.3f s)" % (nChunks, nChunks*tSubs)
-        print "---"
-        print "Offset: %.3f s (%i subints.)" % (config['skip'], skip)
-        print "Duration: %.3f s (%i subints.)" % (config['duration'], dur)
-        print "Transform Length: %i" % LFFT
+        print("Filename: %s (%i of %i)" % (filename, c+1, len(filenames)))
+        print("Date of First Frame: %s" % datetime.utcfromtimestamp(tStart))
+        print("Beam: %i" % beam)
+        print("Tuning: %i" % tuning)
+        print("Sample Rate: %i Hz" % srate)
+        print("Tuning Frequency: %.3f Hz" % cFreq)
+        print("---")
+        print("Target: %s" % sourceName)
+        print("RA: %.3f hours" % (ra/15.0,))
+        print("Dec: %.3f degrees" % dec)
+        print("Data Products: %s" % ','.join(data_products))
+        print("Integration Time: %.3f ms" % (tInt*1e3,))
+        print("Sub-integrations: %i (%.3f s)" % (nChunks, nChunks*tSubs))
+        print("---")
+        print("Offset: %.3f s (%i subints.)" % (config['skip'], skip))
+        print("Duration: %.3f s (%i subints.)" % (config['duration'], dur))
+        print("Transform Length: %i" % LFFT)
         
         ## Prepare the HDF5 file
         if f is None:
@@ -206,7 +208,7 @@ def main(args):
             outname = '%s.hdf5' % outname
             
             if os.path.exists(outname):
-                yn = raw_input("WARNING: '%s' exists, overwrite? [Y/n] " % outname)
+                yn = input("WARNING: '%s' exists, overwrite? [Y/n] " % outname)
                 if yn not in ('n', 'N'):
                     os.unlink(outname)
                 else:
@@ -216,7 +218,7 @@ def main(args):
             f = hdfData.createNewFile(outname)
             hdfData.fillMinimum(f, 1, beam, srate)
             for t in (1, 2):
-                hdfData.createDataSets(f, 1, t, numpy.arange(LFFT, dtype=numpy.float64), dur*nSubs, dataProducts)
+                hdfData.createDataSets(f, 1, t, numpy.arange(LFFT, dtype=numpy.float64), dur*nSubs, data_products)
             f.attrs['FileGenerator'] = 'writeHDF5FromPsrfits.py'
             f.attrs['InputData'] = os.path.basename(filename)
             
@@ -224,15 +226,15 @@ def main(args):
             ds['obs1'] = hdfData.getObservationSet(f, 1)
             ds['obs1-time'] = ds['obs1'].create_dataset('time', (dur*nSubs,), 'f8')
             for t in (1, 2):
-                ds['obs1-freq%i' % (t,)] = hdfData.getDataSet(f, 1, t, 'freq')
-                for p in dataProducts:
-                    ds["obs1-%s%i" % (p, t)] = hdfData.getDataSet(f, 1, t, p)
+                ds['obs1-freq%i' % (t,)] = hdfData.get_data_set(f, 1, t, 'freq')
+                for p in data_products:
+                    ds["obs1-%s%i" % (p, t)] = hdfData.get_data_set(f, 1, t, p)
                     
             ### Add in mask information
             for t in (1, 2):
                 tuningInfo = ds["obs1"].get("Tuning%i" % t, None)
                 maskInfo = tuningInfo.create_group("Mask")
-                for p in dataProducts:
+                for p in data_products:
                     maskInfo.create_dataset(p, ds["obs1-%s%i" % (p, t)].shape, 'bool')
                     ds["obs1-mask-%s%i" % (p, t)] = maskInfo.get(p, None)
                     
@@ -250,14 +252,11 @@ def main(args):
             ds['obs1'].attrs['tInt'] = tInt
             ds['obs1'].attrs['tInt_Units'] = 's'
             ds['obs1'].attrs['LFFT'] = LFFT
-            ds['obs1'].attrs['nChan'] = LFFT
+            ds['obs1'].attrs['nchan'] = LFFT
             
             ### Create the progress bar so that we can keep up with the conversion.
-            try:
-                pbar = progress.ProgressBarPlus(max=len(filenames)*dur)
-            except AttributeError:
-                pbar = progress.ProgressBar(max=len(filenames)*dur)
-                
+            pbar = progress.ProgressBarPlus(max=len(filenames)*dur)
+            
         ## Frequency information
         freq = hdulist[1].data[0][12]*1e6		# MHz -> Hz
         ds['obs1'].attrs['RBW'] = freq[1]-freq[0]
@@ -265,7 +264,7 @@ def main(args):
         ds['obs1-freq%i' % (tuning,)][:] = freq
         
         ## Read in the data and apply what ever scaling is needed
-        for i in xrange(skip, skip+dur):
+        for i in range(skip, skip+dur):
             ### Access the correct subintegration
             subint = hdulist[1].data[i]
             
@@ -288,14 +287,14 @@ def main(args):
             
             ### Apply the scaling/offset to the data and save the results 
             ### to the HDF5 file
-            for j in xrange(nSubs):
+            for j in range(nSubs):
                 k = (i-skip)*nSubs + j
-                t = subint[1] + tInt*(j-nSubs/2)
+                t = subint[1] + tInt*(j-nSubs//2)
                 d = data[:,:,j]*bscl + bzero
                 
                 if c == 0:
                     ds['obs1-time'][k] = tStart + t
-                for l,p in enumerate(dataProducts):
+                for l,p in enumerate(data_products):
                     ds['obs1-%s%i' % (p,tuning)][k,:] = d[l,:]
                     ds['obs1-mask-%s%i' % (p,tuning)][k,:] = msk
                     

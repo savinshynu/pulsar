@@ -1,0 +1,12 @@
+# Data files
+*.fits
+*.hdf5
+
+# Object files
+*.o
+
+# Libraries
+*.so
+
+# Python stuff
+*.pyc
