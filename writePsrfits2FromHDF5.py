@@ -126,10 +126,10 @@ def main(args):
     obs1tuning2 = obs1['Tuning2']
     
     nFramesFile = obs1['time'].shape[0]
-    srate = float(obs1.attrs['sample_rate'])
+    srate = float(obs1.attrs['sampleRate'])
     beam = int(obs1.attrs['Beam'])
     LFFT = int(obs1.attrs['LFFT'])
-    nchan = int(obs1.attrs['nchan'])
+    nchan = int(obs1.attrs['nChan'])
     chanOffset = LFFT - nchan		# Packing offset to deal with old HDF5 files that contain only LFFT-1 channels
     central_freq1 = obs1tuning1['freq'][LFFT//2-chanOffset]
     central_freq2 = obs1tuning2['freq'][LFFT//2-chanOffset]

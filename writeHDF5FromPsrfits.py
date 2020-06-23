@@ -252,7 +252,7 @@ def main(args):
             ds['obs1'].attrs['tInt'] = tInt
             ds['obs1'].attrs['tInt_Units'] = 's'
             ds['obs1'].attrs['LFFT'] = LFFT
-            ds['obs1'].attrs['nchan'] = LFFT
+            ds['obs1'].attrs['nChan'] = LFFT
             
             ### Create the progress bar so that we can keep up with the conversion.
             pbar = progress.ProgressBarPlus(max=len(filenames)*dur)
