@@ -723,10 +723,7 @@ class SinglePulse_GUI(object):
                 self.ax2.lines.extend(self.oldMarkT)
                 self.ax2.lines.extend(self.oldMarkD)
                 
-        try:
-            self.frame.figure2.tight_layout()
-        except:
-            pass
+        self.frame.figure2.tight_layout()
         self.frame.canvas2.draw()
         
         # Plot 1(a) - SNR histogram
@@ -743,10 +740,7 @@ class SinglePulse_GUI(object):
             best = numpy.argmin( numpy.abs(snrBounds[0]-snrHist[1]) )
             self.ax1a.bar(snrBounds[0], snrHist[0][best], width=snrHist[1][1]-snrHist[1][0], color='black')
             
-        try:
-            self.frame.figure1a.tight_layout()
-        except:
-            pass
+        self.frame.figure1a.tight_layout()
         self.frame.canvas1a.draw()
         
         # Plot 1(b) - DM histogram
@@ -763,10 +757,7 @@ class SinglePulse_GUI(object):
             best = numpy.argmin( numpy.abs(dmBounds[0]-dmHist[1]) )
             self.ax1b.bar(dmBounds[0], dmHist[0][best], width=dmHist[1][1]-dmHist[1][0], color='black')
             
-        try:
-            self.frame.figure1b.tight_layout()
-        except:
-            pass
+        self.frame.figure1b.tight_layout()
         self.frame.canvas1b.draw()
         
         # Plot 1(c) - DM vs. SNR
@@ -781,10 +772,7 @@ class SinglePulse_GUI(object):
         self.ax1c.set_xlabel('DM [pc cm$^{-3}$]')
         self.ax1c.set_ylabel('S/N')
         
-        try:
-            self.frame.figure1c.tight_layout()
-        except:
-            pass
+        self.frame.figure1c.tight_layout()
         self.frame.canvas1c.draw()
         
     def makeMark(self, clickTime, clickDM):
@@ -1439,17 +1427,17 @@ class MainWindow(wx.Frame):
         hbox1 = wx.BoxSizer(wx.HORIZONTAL)
         self.figure1a = Figure(figsize=(2,2))
         self.canvas1a = FigureCanvasWxAgg(panel1, -1, self.figure1a)
-        hbox1.Add(self.canvas1a, 1, wx.ALIGN_LEFT | wx.EXPAND)
+        hbox1.Add(self.canvas1a, 1, wx.EXPAND)
         
         # Add a DM histogram plot
         self.figure1b = Figure(figsize=(2,2))
         self.canvas1b = FigureCanvasWxAgg(panel1, -1, self.figure1b)
-        hbox1.Add(self.canvas1b, 1, wx.ALIGN_CENTER | wx.EXPAND)
+        hbox1.Add(self.canvas1b, 1, wx.EXPAND)
         
         # Add DM vs SNR plot
         self.figure1c = Figure(figsize=(2,2))
         self.canvas1c = FigureCanvasWxAgg(panel1, -1, self.figure1c)
-        hbox1.Add(self.canvas1c, 1, wx.ALIGN_RIGHT | wx.EXPAND)
+        hbox1.Add(self.canvas1c, 1, wx.EXPAND)
         panel1.SetSizer(hbox1)
         vbox.Add(panel1, 1, wx.EXPAND)
         
@@ -1460,8 +1448,8 @@ class MainWindow(wx.Frame):
         self.canvas2 = FigureCanvasWxAgg(panel3, -1, self.figure2)
         self.toolbar = RefreshAwareToolbar(self.canvas2, refreshCallback=self.data.draw)
         self.toolbar.Realize()
-        hbox3.Add(self.canvas2, 1, wx.EXPAND)
-        hbox3.Add(self.toolbar, 0, wx.ALIGN_LEFT | wx.EXPAND)
+        hbox3.Add(self.canvas2, 1, wx.ALIGN_LEFT | wx.EXPAND)
+        hbox3.Add(self.toolbar, 0, wx.ALIGN_LEFT)
         panel3.SetSizer(hbox3)
         vbox.Add(panel3, 1, wx.EXPAND)
         self.panel3 = panel3
@@ -1798,31 +1786,19 @@ class MainWindow(wx.Frame):
         
         # Set the figure sizes and redraw
         self.figure1a.set_size_inches((newW1, newH0))
-        try:
-            self.figure1a.tight_layout()
-        except:
-            pass
+        self.figure1a.tight_layout()
         self.figure1a.canvas.draw()
         
         self.figure1b.set_size_inches((newW2, newH0))
-        try:
-            self.figure1b.tight_layout()
-        except:
-            pass
+        self.figure1b.tight_layout()
         self.figure1b.canvas.draw()
         
         self.figure1c.set_size_inches((newW3, newH0))
-        try:
-            self.figure1c.tight_layout()
-        except:
-            pass
+        self.figure1c.tight_layout()
         self.figure1c.canvas.draw()
         
         self.figure2.set_size_inches((newW0, newH1))
-        try:
-            self.figure2.tight_layout()
-        except:
-            pass
+        self.figure2.tight_layout()
         self.figure2.canvas.draw()
         
         self.panel3.Refresh()
@@ -2123,8 +2099,8 @@ class SliceDisplay(wx.Frame):
         self.canvas = FigureCanvasWxAgg(panel1, -1, self.figure)
         self.toolbar = NavigationToolbar2WxAgg(self.canvas)
         self.toolbar.Realize()
-        vbox1.Add(self.canvas,  1, wx.EXPAND)
-        vbox1.Add(self.toolbar, 0, wx.ALIGN_LEFT | wx.EXPAND)
+        vbox1.Add(self.canvas,  1, wx.ALIGN_LEFT | wx.EXPAND)
+        vbox1.Add(self.toolbar, 0, wx.ALIGN_LEFT)
         panel1.SetSizer(vbox1)
         hbox.Add(panel1, 1, wx.EXPAND)
         
@@ -2265,12 +2241,15 @@ class SliceDisplay(wx.Frame):
         self.Close()
         
     def resizePlots(self, event):
-        w, h = self.GetSize()
+        # Get the current size of the window and the navigation toolbar
+        w, h = self.GetClientSize()
+        wt, ht = self.toolbar.GetSize()
+        
         dpi = self.figure.get_dpi()
         newW = 1.0*w/dpi
-        newH1 = 1.0*(h/2-100)/dpi
-        newH2 = 1.0*(h/2-75)/dpi
-        self.figure.set_size_inches((newW, newH1))
+        newH = 1.0*(h-ht)/dpi
+        self.figure.set_size_inches((newW, newH))
+        self.figure.tight_layout()
         self.figure.canvas.draw()
 
     def GetToolBar(self):
@@ -2442,8 +2421,8 @@ class WaterfallDisplay(wx.Frame):
         self.canvas = FigureCanvasWxAgg(panel1, -1, self.figure)
         self.toolbar = NavigationToolbar2WxAgg(self.canvas)
         self.toolbar.Realize()
-        vbox1.Add(self.canvas,  1, wx.EXPAND)
-        vbox1.Add(self.toolbar, 0, wx.ALIGN_LEFT | wx.EXPAND)
+        vbox1.Add(self.canvas,  1, wx.ALIGN_LEFT | wx.EXPAND)
+        vbox1.Add(self.toolbar, 0, wx.ALIGN_LEFT)
         panel1.SetSizer(vbox1)
         hbox.Add(panel1, 1, wx.EXPAND)
         
@@ -3017,12 +2996,15 @@ class WaterfallDisplay(wx.Frame):
         self.Close()
         
     def resizePlots(self, event):
-        w, h = self.GetSize()
+        # Get the current size of the window and the navigation toolbar
+        w, h = self.GetClientSize()
+        wt, ht = self.toolbar.GetSize()
+        
         dpi = self.figure.get_dpi()
         newW = 1.0*w/dpi
-        newH1 = 1.0*(h/2-100)/dpi
-        newH2 = 1.0*(h/2-75)/dpi
-        self.figure.set_size_inches((newW, newH1))
+        newH = 1.0*(h-ht)/dpi
+        self.figure.set_size_inches((newW, newH))
+        self.figure.tight_layout()
         self.figure.canvas.draw()
 
     def GetToolBar(self):
