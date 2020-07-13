@@ -142,7 +142,7 @@ class RawDRXFrameBuffer(buffer.FrameBufferBase):
         
         return frame.timetag
     
-    def createFill(self, key, frameParameters):
+    def create_fill(self, key, frameParameters):
         """
         Create a 'fill' frame of zeros using an existing good
         packet as a template.
