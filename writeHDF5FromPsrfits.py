@@ -16,7 +16,6 @@ import re
 import sys
 import h5py
 import numpy
-import ephem
 import ctypes
 import getopt
 from datetime import datetime

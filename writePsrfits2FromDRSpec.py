@@ -14,7 +14,6 @@ except NameError:
 import os
 import sys
 import numpy
-import ephem
 import ctypes
 import argparse
 

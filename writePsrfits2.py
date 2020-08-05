@@ -15,7 +15,6 @@ import os
 import sys
 import time
 import numpy
-import ephem
 import ctypes
 import signal
 import argparse

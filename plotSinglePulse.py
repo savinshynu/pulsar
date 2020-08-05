@@ -12,7 +12,6 @@ import sys
 import math
 import time
 import numpy
-import ephem
 import argparse
 import subprocess
 from datetime import datetime

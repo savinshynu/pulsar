@@ -10,7 +10,6 @@ from __future__ import print_function, division
 import os
 import sys
 import copy
-import ephem
 import struct
 import argparse
 from datetime import datetime
