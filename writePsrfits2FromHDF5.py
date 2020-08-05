@@ -15,9 +15,9 @@ import os
 import sys
 import h5py
 import numpy
-import ephem
 import ctypes
 import argparse
+from datetime import datetime
 
 import psrfits_utils.psrfits_utils as pfu
 
@@ -139,8 +139,8 @@ def main(args):
     nsblk = 32
     
     ## Date
-    beginDate = ephem.Date(astro.unix_to_utcjd(obs1['time'][0]) - astro.DJD_OFFSET)
-    beginTime = beginDate.datetime()
+    beginDate = datetime.utcfromtimestamp(obs1['time'][0])
+    beginTime = beginDate
     mjd = astro.jd_to_mjd(astro.unix_to_utcjd(obs1['time'][0]))
     mjd_day = int(mjd)
     mjd_sec = (mjd-mjd_day)*86400
