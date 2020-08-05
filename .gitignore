@@ -2,6 +2,10 @@
 *.fits
 *.hdf5
 
+# Cache files
+_data.py
+_data.etag
+
 # Object files
 *.o
 
