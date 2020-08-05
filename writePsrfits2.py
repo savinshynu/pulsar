@@ -42,25 +42,15 @@ readerQ = deque()
 
 
 def resolveTarget(name):
-    try:
-        from urllib2 import urlopen
-        from urllib import urlencode, quote_plus
-    except ImportError:
-        from urllib.request import urlopen
-        from urllib.parse import urlencode, quote_plus
-    from xml.etree import ElementTree
+    from astropy import units
+    from astropy.coordinates import SkyCoord
     
     try:
-        result = urlopen('https://cdsweb.u-strasbg.fr/cgi-bin/nph-sesame/-oxp/SNV?%s' % quote_plus(name))
-        tree = ElementTree.fromstring(result.read())
-        target = tree.find('Target')
-        service = target.find('Resolver')
-        coords = service.find('jpos')
-        
-        serviceS = service.attrib['name'].split('=', 1)[1]
-        raS, decS = coords.text.split(None, 1)
-        
-    except (IOError, ValueError, RuntimeError):
+        coords = SkyCoord.from_name(name)
+        raS = coords.ra.to_string(unit=units.hourangle, sep=':')[:13]
+        decS = coords.dec.to_string(unit=units.degree, sep=':')[:13]
+        serviceS = "sesame"
+    except:
         raS = "---"
         decS = "---"
         serviceS = "Error"
