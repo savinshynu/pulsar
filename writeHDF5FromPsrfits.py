@@ -17,7 +17,7 @@ import sys
 import h5py
 import numpy
 import ctypes
-import getopt
+import argparse
 from datetime import datetime
 from astropy.io import fits as astrofits
 
@@ -25,71 +25,15 @@ import data as hdfData
 
 import lsl.astro as astro
 import lsl.common.progress as progress
+from lsl.misc import parser as aph
 
 
 _fnRE = re.compile('.*_b(?P<beam>[1-4])(t(?P<tuning>[12]))?_.*\.fits')
 
 
-def usage(exitCode=None):
-    print("""writeHDF5FromPsrfits.py - Read in a PSRFITS file and create an HDF5 )
-file in the standard LWA1 format.
-
-Usage: writeFromHDF5FromPsrfits.py [OPTIONS] file
-
-Options:
--h, --help                  Display this help information
--s, --skip                  Time in seconds to skip into the file, in 
-                            seconds (default = 0)
--d, --duration              Amount of time to save in seconds (default = 10)
--o, --output                Output file basename
-""")
-    
-    if exitCode is not None:
-        sys.exit(exitCode)
-    else:
-        return True
-
-
-def parseOptions(args):
-    config = {}
-    # Command line flags - default values
-    config['output'] = None
-    config['skip'] = 0.0
-    config['duration'] = 10.0
-    config['args'] = []
-    
-    # Read in and process the command line flags
-    try:
-        opts, args = getopt.getopt(args, "ho:s:d:", ["help", "output=", "skip=", "duration="])
-    except getopt.GetoptError as err:
-        # Print help information and exit:
-        print(str(err)) # will print something like "option -a not recognized"
-        usage(exitCode=2)
-        
-    # Work through opts
-    for opt, value in opts:
-        if opt in ('-h', '--help'):
-            usage(exitCode=0)
-        elif opt in ('-s', '--skip'):
-            config['skip'] = float(value)
-        elif opt in ('-d', '--duration'):
-            config['duration'] = float(value)
-        elif opt in ('-o', '--output'):
-            config['output'] = value
-        else:
-            assert False
-            
-    # Add in arguments
-    config['args'] = args
-    
-    # Return configuration
-    return config
-
-
 def main(args):
     # Parse command line options
-    config = parseOptions(args)
-    filenames = config['args'][:2]
+    filenames = args.filename
     
     # Variable that will be associated with the HDF5 instance
     f = None
@@ -171,11 +115,11 @@ def main(args):
             nChunksOld = nChunks
             
         ## Convert the skip and duration values to subblocks
-        skip = int(round(config['skip'] / tSubs))
-        dur  = int(round(config['duration'] / tSubs))
+        skip = int(round(args.skip / tSubs))
+        dur  = int(round(args.duration / tSubs))
         dur  = dur if dur else 1
-        config['skip'] = skip * tSubs
-        config['duration'] = dur * tSubs
+        args.skip = skip * tSubs
+        args.duration = dur * tSubs
         
         ## Report
         print("Filename: %s (%i of %i)" % (filename, c+1, len(filenames)))
@@ -192,8 +136,8 @@ def main(args):
         print("Integration Time: %.3f ms" % (tInt*1e3,))
         print("Sub-integrations: %i (%.3f s)" % (nChunks, nChunks*tSubs))
         print("---")
-        print("Offset: %.3f s (%i subints.)" % (config['skip'], skip))
-        print("Duration: %.3f s (%i subints.)" % (config['duration'], dur))
+        print("Offset: %.3f s (%i subints.)" % (args.skip, skip))
+        print("Duration: %.3f s (%i subints.)" % (args.duration, dur))
         print("Transform Length: %i" % LFFT)
         
         ## Prepare the HDF5 file
@@ -313,5 +257,18 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    parser = argparse.ArgumentParser(
+        description='read in a PSRFITS file and create an HDF5 file in the standard LWA1 format', 
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        )
+    parser.add_argument('filename', type=str, nargs='+',
+                        help='filename to process')
+    parser.add_argument('-s', '--skip', type=aph.positive_or_zero_float, default=0.0,
+                        help='time in seconds to skip into the file')
+    parser.add_argument('-d', '--duration', type=aph.positive_float, default=10.0,
+                        help='amount of time to save in seconds')
+    parser.add_argument('-o', '--output', type=str,
+                        help='output file basename')
+    args = parser.parse_args()
+    main(args)
     
