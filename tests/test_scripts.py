@@ -122,7 +122,7 @@ def _test_generator(script):
                     level = len(loc) - len(loc.lstrip()) - 4
                     if loc.strip().rstrip() == 'rawSpectraDedispersed)':
                         ## This is fragile on purpose
-                        loc = context[21-4]
+                        loc = context[20-4]
                         level = len(loc) - len(loc.lstrip()) - 4
                     found_try = None
                     for i in range(1, 20):
