@@ -65,7 +65,8 @@ _SAFE_TO_IGNORE = ["Possible",
                    "Undefined variable 'OptimizeDataLevels8Bit",
                    "Undefined variable 'OptimizeDataLevels4Bit",
                    "Undefined variable 'useWisdom",
-                   "Class 'int' has no 'from_bytes' member"]
+                   "Class 'int' has no 'from_bytes' member",
+                   "Module 'astropy.units' has no 'hourangle' member"]
 
 
 def _get_context(filename, line, before=0, after=0):
@@ -95,7 +96,7 @@ def _test_generator(script):
     """
     
     def test(self):
-        out, err = lint.py_run("%s -E --extension-pkg-whitelist=numpy,astropy.units,ephem,lsl --init-hook='import sys; sys.path=[%s]; sys.path.insert(0, \"%s\")'" % (script, ",".join(['"%s"' % p for p in sys.path]), os.path.dirname(MODULE_BUILD)), return_std=True)
+        out, err = lint.py_run("%s -E --extension-pkg-whitelist=numpy,ephem,lsl --init-hook='import sys; sys.path=[%s]; sys.path.insert(0, \"%s\")'" % (script, ",".join(['"%s"' % p for p in sys.path]), os.path.dirname(MODULE_BUILD)), return_std=True)
         out_lines = out.read().split('\n')
         err_lines = err.read().split('\n')
         out.close()
