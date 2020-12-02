@@ -19,6 +19,8 @@ import ctypes
 import argparse
 from datetime import datetime
 
+from astropy.time import Time as AstroTime
+
 import psrfits_utils.psrfits_utils as pfu
 
 import lsl.astro as astro
@@ -139,9 +141,15 @@ def main(args):
     nsblk = 32
     
     ## Date
-    beginDate = datetime.utcfromtimestamp(obs1['time'][0])
+    try:
+        beginATime = AstroTime(obs1['time'][0]['int'], obs1['time']['frac'],
+                               format=obs1['time'].attrs['format'],
+                               scale=obs1['time'].attrs['scale'])
+    except (KeyError, ValueError):
+        beginAtime = AstroTime(obs1['time'][0], format='unix', scale='utc')
+    beginDate beginATime.utc.datetime
     beginTime = beginDate
-    mjd = astro.jd_to_mjd(astro.unix_to_utcjd(obs1['time'][0]))
+    mjd = beginATime.utc.mjd
     mjd_day = int(mjd)
     mjd_sec = (mjd-mjd_day)*86400
     if args.output is None:
@@ -291,12 +299,18 @@ def main(args):
         
         for j in range(chunkSize):
             jP = j + i*chunkSize
+            nTime = obs1['time'][jP]
             try:
-                if obs1['time'][jP] > oTime + 1.001*tInt:
-                    print('Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, obs1['time'][jP], oTime, tInt))
+                nTime = nTime['int'] + nTime['frac']
+            except ValueError:
+                pass
+                
+            try:
+                if nTime > oTime + 1.001*tInt:
+                    print('Warning: Time tag error in subint. %i; %.3f > %.3f + %.3f' % (siCount, nTime, oTime, tInt))
             except NameError:
                 pass
-            oTime = obs1['time'][jP]
+            oTime = nTime
             
             k = 0
             for t in (obs1tuning1, obs1tuning2):
