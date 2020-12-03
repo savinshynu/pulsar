@@ -20,7 +20,7 @@ import ctypes
 import argparse
 from datetime import datetime
 
-from astro.time import Time as AstroTime
+from astropy.time import Time as AstroTime
 from astropy.io import fits as astrofits
 
 import data as hdfData
