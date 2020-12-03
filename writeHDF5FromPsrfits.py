@@ -130,7 +130,7 @@ def main(args):
         
         ## Report
         print("Filename: %s (%i of %i)" % (filename, c+1, len(filenames)))
-        print("Date of First Frame: %s" % tStart.datetime
+        print("Date of First Frame: %s" % tStart.datetime)
         print("Beam: %i" % beam)
         print("Tuning: %i" % tuning)
         print("Sample Rate: %i Hz" % srate)
