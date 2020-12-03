@@ -147,7 +147,7 @@ def main(args):
                                scale=obs1['time'].attrs['scale'])
     except (KeyError, ValueError):
         beginAtime = AstroTime(obs1['time'][0], format='unix', scale='utc')
-    beginDate beginATime.utc.datetime
+    beginDate = beginATime.utc.datetime
     beginTime = beginDate
     mjd = beginATime.utc.mjd
     mjd_day = int(mjd)
