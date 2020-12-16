@@ -170,7 +170,7 @@ def main(args):
             y[0,:] += x[1,:]
             y[1,:] += x[2,:]
             y[1,:] += x[3,:]
-            return y
+            return y.astype(numpy.float32)
     else:
         args.no_summing = True
         polNames = ''.join(data_products)
@@ -284,7 +284,7 @@ def main(args):
     done = False
     
     siCount = 0
-    nSubInts = nFramesFile / chunkSize
+    nSubInts = nFramesFile // chunkSize
     for i in range(nSubInts):
         ## Read in the data
         data = numpy.zeros((2*len(data_products), LFFT*chunkSize), dtype=numpy.float64)
