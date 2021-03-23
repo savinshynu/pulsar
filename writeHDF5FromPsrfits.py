@@ -19,6 +19,8 @@ import numpy
 import ctypes
 import argparse
 from datetime import datetime
+
+from astropy.time import Time as AstroTime
 from astropy.io import fits as astrofits
 
 import data as hdfData
@@ -68,7 +70,8 @@ def main(args):
         dec = decSign*sum([float(v)/60**i for i,v in enumerate(dec)])
         epoch = float(hdulist[0].header['EQUINOX'])
         
-        tStart = astro.utcjd_to_unix(hdulist[0].header['STT_IMJD'] + (hdulist[0].header['STT_SMJD'] + hdulist[0].header['STT_OFFS'])/86400.0 + astro.MJD_OFFSET)
+        tStart = AstroTime(hdulist[0].header['STT_IMJD'], (hdulist[0].header['STT_SMJD'] + hdulist[0].header['STT_OFFS'])/86400.0,
+                           format='mjd', scale='utc')
         cFreq = hdulist[0].header['OBSFREQ']*1e6	# MHz -> Hz
         srate = hdulist[0].header['OBSBW']*1e6		# MHz -> Hz
         LFFT = hdulist[1].header['NCHAN']
@@ -114,6 +117,10 @@ def main(args):
             nPolOld = nPol
             nChunksOld = nChunks
             
+        ## Pre-process the start time
+        tStartI = int(tStart.unix)
+        tStartF = tStart.unix - tStartI
+        
         ## Convert the skip and duration values to subblocks
         skip = int(round(args.skip / tSubs))
         dur  = int(round(args.duration / tSubs))
@@ -123,7 +130,7 @@ def main(args):
         
         ## Report
         print("Filename: %s (%i of %i)" % (filename, c+1, len(filenames)))
-        print("Date of First Frame: %s" % datetime.utcfromtimestamp(tStart))
+        print("Date of First Frame: %s" % tStart.datetime)
         print("Beam: %i" % beam)
         print("Tuning: %i" % tuning)
         print("Sample Rate: %i Hz" % srate)
@@ -158,16 +165,16 @@ def main(args):
                     raise RuntimeError("Output file '%s' already exists" % outname)
                     
             ### Populate the groups
-            f = hdfData.createNewFile(outname)
-            hdfData.fillMinimum(f, 1, beam, srate)
+            f = hdfData.create_new_file(outname)
+            hdfData.fill_minimum(f, 1, beam, srate)
             for t in (1, 2):
-                hdfData.createDataSets(f, 1, t, numpy.arange(LFFT, dtype=numpy.float64), dur*nSubs, data_products)
+                hdfData.create_observation_set(f, 1, t, numpy.arange(LFFT, dtype=numpy.float64), dur*nSubs, data_products)
             f.attrs['FileGenerator'] = 'writeHDF5FromPsrfits.py'
             f.attrs['InputData'] = os.path.basename(filename)
             
             ds = {}
-            ds['obs1'] = hdfData.getObservationSet(f, 1)
-            ds['obs1-time'] = ds['obs1'].create_dataset('time', (dur*nSubs,), 'f8')
+            ds['obs1'] = hdfData.get_observation_set(f, 1)
+            ds['obs1-time'] = hdfData.get_time(f, 1)
             for t in (1, 2):
                 ds['obs1-freq%i' % (t,)] = hdfData.get_data_set(f, 1, t, 'freq')
                 for p in data_products:
@@ -236,7 +243,7 @@ def main(args):
                 d = data[:,:,j]*bscl + bzero
                 
                 if c == 0:
-                    ds['obs1-time'][k] = tStart + t
+                    ds['obs1-time'][k] = (tStartI, tStartF + t)
                 for l,p in enumerate(data_products):
                     ds['obs1-%s%i' % (p,tuning)][k,:] = d[l,:]
                     ds['obs1-mask-%s%i' % (p,tuning)][k,:] = msk
