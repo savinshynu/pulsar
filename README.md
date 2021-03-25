@@ -1,3 +1,5 @@
+[![Travis](https://travis-ci.org/lwa-project/pulsar.svg?branch=master)](https://travis-ci.org/lwa-project/pulsar)
+
 [![Paper](https://img.shields.io/badge/arXiv-1410.7422-blue.svg)](https://arxiv.org/pdf/1410.7422.pdf)
 
 LWA1 Pulsar Scripts
