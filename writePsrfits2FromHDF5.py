@@ -194,7 +194,7 @@ def main(args):
         allowed_products = []
         for p,pol in enumerate(data_products):
             if pol in ('XX', 'YY'):
-                allowed_indices.apend(p)
+                allowed_indices.append(p)
                 allowed_products.append(pol)
         polNames = ''.join(allowed_products)
         iPols = len(data_products)
