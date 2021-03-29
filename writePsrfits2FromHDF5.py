@@ -179,12 +179,35 @@ def main(args):
             y[1,:] += x[2,:]
             y[1,:] += x[3,:]
             return y.astype(numpy.float32)
+    elif 'I' in data_products:
+        args.no_summing = False
+        polNames = 'I'
+        nPols = 1
+        def reduceEngine(x):
+            y = numpy.zeros((2,x.shape[1]), dtype=numpy.float32)
+            y[0,:] = x[0,:]
+            y[1,:] = x[x.shape[0]//2,:]
+            return y
     else:
         args.no_summing = True
-        polNames = ''.join(data_products)
-        nPols = len(data_products)
-        reduceEngine = lambda x: x
-        
+        allowed_indices = []
+        allowed_products = []
+        for p,pol in enumerate(data_products):
+            if pol in ('XX', 'YY'):
+                allowed_indices.apend(p)
+                allowed_products.append(pol)
+        polNames = ''.join(allowed_products)
+        iPols = len(data_products)
+        nPols = len(allowed_products)
+        if nPols == 0:
+            raise RuntimeError('No valid polarization products found: %s' % (','.join(data_products),))
+        def reduceEngine(x, iPols=iPols, nPols=nPols, indicies=allowed_indices):
+            y = numpy.zeros((len(allowed_products),x.shape[1]), dtype=numpy.float32)
+            for i,j in enumerate(indicies):
+                y[i,:] = x[j,:]
+                y[nPols+i,:] = x[iPols+j]
+            return y
+            
     if args.four_bit_data:
         OptimizeDataLevels = OptimizeDataLevels4Bit
     else:
