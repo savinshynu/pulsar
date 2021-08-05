@@ -126,9 +126,11 @@ coreExtraLibs.extend(fftwLibs)
 
 
 ExtensionModules = [Extension('_psr', ['psr.c', 'utils.c', 'fft.c', 'kurtosis.c', 'dedispersion.c', 'reduce.c', 'quantize.c'],
-                              libraries=['m'], extra_compile_args=coreExtraFlags, extra_link_args=coreExtraLibs),
+                              include_dirs=[numpy.get_include()], libraries=['m'],
+                              extra_compile_args=coreExtraFlags, extra_link_args=coreExtraLibs),
                     Extension('_helper', ['helper.c',],
-                              libraries=['m'], extra_compile_args=coreExtraFlags, extra_link_args=coreExtraLibs)]
+                              include_dirs=[numpy.get_include()], libraries=['m'],
+                              extra_compile_args=coreExtraFlags, extra_link_args=coreExtraLibs)]
 
 
 setup(
