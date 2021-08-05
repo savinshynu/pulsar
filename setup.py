@@ -1,17 +1,10 @@
 import os
+import numpy
 import tempfile
 import subprocess
 from setuptools import setup, Extension, find_packages
 from distutils import log
 from distutils.command.install import install
-try:
-    # Attempt to use Cython for building extensions, if available
-    from Cython.Distutils.build_ext import build_ext
-    # Additionally, assert that the compiler module will load
-    # also. Ref #1229.
-    __import__('Cython.Compiler.Main')
-except ImportError:
-    from distutils.command.build_ext import build_ext
 
 
 def get_openmp():
@@ -110,6 +103,7 @@ def get_fftw():
 
 
 class dummy_install(install):
+    """Dummay install method that doesn't let you install."""
     def finalize_options(self, *args, **kwargs):
         raise RuntimeError("This is a dummy package that cannot be installed")
 
