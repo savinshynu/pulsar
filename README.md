@@ -73,6 +73,10 @@ Makefile
 --------
 Makefile for the psr.c module.
 
+setup.py
+--------
+File used by the Makefile to help build the Python extensions.
+
 data.py
 -------
 External file from Commissioning/DRX/HDF5 used by writeHDF5FromPsrfits.py
