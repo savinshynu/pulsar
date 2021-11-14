@@ -22,6 +22,8 @@ jobs:
         - run: pip install pylint
         - run: make
         - run: git clone https://github.com/lwa-project/psrfits_utils.git
-        - run: cd psrfits_utils && ./prepare && ./configure && make && make install
+        - run: cd psrfits_utils && ./prepare && ./configure --prefix=/usr && make && sudo make install
         - continue-on-error: ${{ matrix.python-version == '2.7' }}
+          env:
+            LD_LIBRARY_PATH: /usr/lib/python${matrix.python-version}/site-packages/psrfits_utils:${LD_LIBRARY_PATH}
           run: cd tests && python -m unittest discover
