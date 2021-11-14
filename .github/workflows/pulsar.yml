@@ -12,7 +12,7 @@ jobs:
         - if: ${{ matrix.os == 'ubuntu-latest' }}
           run: sudo apt-get install -y build-essential ca-certificates curl git pkg-config gzip libgdbm-dev libfftw3-dev libhdf5-dev tcsh swig libcfitsio-dev
         - if: ${{ matrix.os == 'macos-latest' }}
-          run: brew install pkg-config fftw hdf5 autoconf automake
+          run: brew install pkg-config fftw hdf5 autoconf automake cfitsio swig
         - uses: actions/setup-python@v2
           with:
             python-version: ${{ matrix.python-version }}
@@ -23,5 +23,6 @@ jobs:
         - run: make
         - run: git clone https://github.com/lwa-project/psrfits_utils.git
         - run: cd psrfits_utils && ./prepare && ./configure --prefix=/usr && make && sudo make install
+        - run: sudo rm -rf psrfits_utils
         - continue-on-error: ${{ matrix.python-version == '2.7' }}
           run: cd tests && python -m unittest discover
