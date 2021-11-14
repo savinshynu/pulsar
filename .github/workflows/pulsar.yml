@@ -24,9 +24,9 @@ jobs:
         - run: git clone https://github.com/lwa-project/psrfits_utils.git
         - run: cd psrfits_utils && ./prepare && ./configure --prefix=${HOME}/local && make && make install
         - env:
-            LPE=`pwd`
-            PFU=`ls -d ${HOME}/local/lib/python*/site-packages/psrfits_utils | head -n1`
-            LD_LIBRARY_PATH=${HOME}/local/lib:${PFU}:${LPE}:${LD_LIBRARY_PATH}
-            PYTHONPATH=${LPE}:${PFU}:${PYTHONPATH}
-            continue-on-error: ${{ matrix.python-version == '2.7' }}
-              run: cd tests && python -m unittest discover
+            LPE: ${{ `pwd` }}
+            PFU: ${{ `ls -d ${HOME}/local/lib/python*/site-packages/psrfits_utils | head -n1` }}
+            LD_LIBRARY_PATH: ${{ ${HOME}/local/lib:${PFU}:${LPE}:${LD_LIBRARY_PATH} }}
+            PYTHONPATH: ${{ ${LPE}:${PFU}:${PYTHONPATH} }}
+          continue-on-error: ${{ matrix.python-version == '2.7' }}
+          run: cd tests && python -m unittest discover
