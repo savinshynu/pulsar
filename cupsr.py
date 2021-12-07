@@ -9,6 +9,23 @@ __all__ = ['PulsarEngineRaw', 'PhaseRotator',
 
 
 def PulsarEngineRaw(signals, LFFT=64, signalsF=None, asnumpy=False):
+    """
+    Perform a series of Fourier transforms on complex-valued data to get sub-
+    integration data with linear polarization
+    
+    Input arguments are:
+     * signals: 2-D numpy.complex64 (stands by samples) array of data to FFT
+    
+    Input keywords are:
+     * LFFT: number of FFT channels to make (default=64)
+     * signalsF: ignored - existing array to write the result into
+     * asnumpy: Boolean of whether to return a numpy.ndarray or a cupy.ndarray
+    
+    Outputs:
+     * sub-integration: 2-D numpy.complex64 (stands by channels by integrations)
+       of FFT'd data
+    """
+    
     nstand, nsamp = signals.shape
     nchan = LFFT
     nwin = nsamp // nchan
@@ -67,6 +84,28 @@ __global__ void prot(const float2 *input,
 
 
 def PhaseRotator(signals, freq1, freq2, delays, signalsF=None, asnumpy=False):
+    """
+    Given the output of PulsarEngineRaw, apply a sub-sample delay as a phase
+    rotation to each channel
+    
+    Input arguments are:
+     * signals: 3-D numpy.complex64 (stands by channels by integrations) array
+       of data to FFT
+     * freq1: 1-D numpy.float64 array of frequencies for each channel for the
+       first two stands in signals
+     * freq2: 1-D numpy.float64 array of frequencies for each channel for the
+        second two stands in signals
+     * delay: delay in seconds to apply
+    
+    Keywords:
+     * signalsF: existing array to write the result into
+     * asnumpy: Boolean of whether to return a numpy.ndarray or a cupy.ndarray
+     
+    Outputs:
+     * signals: 3-D numpy.complex64 (stands by channels by integrations) of the
+       phase-rotated spectra data
+    """
+    
     nstand, nchan, nwin = signals.shape
     assert(nchan == freq1.size)
     assert(nchan == freq2.size)
@@ -131,6 +170,24 @@ __global__ void skmask(const float2 *input,
 
 
 def ComputeSKMask(signals, lower, upper, asnumpy=False):
+    """
+    Given the output of PulsarEngineRaw, calculate channel weights based on
+    spectral kurtosis
+    
+    Input arguments are:
+     * signals: 3-D numpy.complex64 (stands by channels by integrations) array
+       of data
+     * lower: lower spectral kurtosis limit
+     * upper: upper spectral kurtosis limit
+    
+    Keywords:
+     * asnumpy: Boolean of whether to return a numpy.ndarray or a cupy.ndarray
+    
+    Outputs:
+     * weight: 2-D numpy.float32 (stands by channels) of data (Boolean-style)
+       weights
+    """
+    
     nstand, nchan, nwin = signals.shape
     if not isinstance(signals, cp.ndarray):
         signals = cp.asarray(signals)
@@ -171,6 +228,21 @@ __global__ void inten(const float2 *input,
 
 
 def CombineToIntensity(signals, signalsF=None, asnumpy=False):
+    """
+    Given the output of PulsarEngineRaw, calculate total intensity spectra
+    
+    Input arguments are:
+     * signals: 3-D numpy.complex64 (stands by channels by integrations) array
+       of data to FFT
+     
+    Keywords:
+     * signalsF: existing array to write the result into
+     * asnumpy: Boolean of whether to return a numpy.ndarray or a cupy.ndarray
+    
+    Outputs:
+     * sub-integration: 2-D numpy.float32 (stands by channels) of spectra data
+    """
+    
     nstand, nchan, nwin = signals.shape
     if not isinstance(signals, cp.ndarray):
         signals = cp.asarray(signals)
@@ -214,6 +286,21 @@ __global__ void linear(const float2 *input,
 
 
 def CombineToLinear(signals, signalsF=None, asnumpy=False):
+    """
+    Given the output of PulsarEngineRaw, calculate linear polarization spectra
+    
+    Input arguments are:
+     * signals: 3-D numpy.complex64 (stands by channels by integrations) array
+       of data to FFT
+     
+    Keywords:
+     * signalsF: existing array to write the result into
+     * asnumpy: Boolean of whether to return a numpy.ndarray or a cupy.ndarray
+    
+    Outputs:
+     * sub-integration: 2-D numpy.float32 (stands by channels) of spectra data
+    """
+    
     nstand, nchan, nwin = signals.shape
     if not isinstance(signals, cp.ndarray):
         signals = cp.asarray(signals)
@@ -263,6 +350,27 @@ __global__ void opt8(const float *input,
 
 
 def OptimizeDataLevels8Bit(signals, LFFT, bzero=None, bscale=None, spectra=None, asnumpy=False):
+    """
+    Given the output of one of the 'Combine' functions, find the bzero and
+    bscale values that yield the best representation of the data as unsigned
+    characters and scale the data accordingly.
+    
+    Input arguments are:
+     * signals: 2-D numpy.float32 (stands by samples) array of combined data
+     * LFFT: number of channels per data stream
+     
+    Keywords:
+     * bzero: ignores - existing array to write the result into
+     * bscale: ignores - existing array to write the result into
+     * spectra: ignores - existing array to write the result into
+     * asnumpy: Boolean of whether to return a numpy.ndarray or a cupy.ndarray
+    
+    Outputs:
+     * bzero: 2-D numpy.float32 (stands by channels) array of bzero values
+     * bscale: 2-D numpy.float32 (stand by channels) array of bscale values
+     * spectra: 2-D numpy.unit8 (stands by samples) array of spectra
+    """
+    
     nstand, nsamp = signals.shape
     nchan = LFFT
     nwin = nsamp // nchan
@@ -332,6 +440,27 @@ __global__ void opt4(const float *input,
 
 
 def OptimizeDataLevels4Bit(signals, LFFT, bzero=None, bscale=None, spectra=None, asnumpy=False):
+    """
+    Given the output of one of the 'Combine' functions, find the bzero and
+    bscale values that yield the best representation of the data as the lower
+    four bits of unsigned characters and scale the data accordingly.
+    
+    Input arguments are:
+     * signals: 2-D numpy.float32 (stands by samples) array of combined data
+     * LFFT: number of channels per data stream
+     
+    Keywords:
+     * bzero: ignores - existing array to write the result into
+     * bscale: ignores - existing array to write the result into
+     * spectra: ignores - existing array to write the result into
+     * asnumpy: Boolean of whether to return a numpy.ndarray or a cupy.ndarray
+    
+    Outputs:
+     * bzero: 2-D numpy.float32 (stands by channels) array of bzero values
+     * bscale: 2-D numpy.float32 (stand by channels) array of bscale values
+     * spectra: 2-D numpy.unit8 (stands by samples) array of spectra
+    """
+    
     nstand, nsamp = signals.shape
     nchan = LFFT
     nwin = nsamp // nchan
