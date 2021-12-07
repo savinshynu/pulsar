@@ -360,9 +360,9 @@ def OptimizeDataLevels8Bit(signals, LFFT, bzero=None, bscale=None, spectra=None,
      * LFFT: number of channels per data stream
      
     Keywords:
-     * bzero: ignores - existing array to write the result into
-     * bscale: ignores - existing array to write the result into
-     * spectra: ignores - existing array to write the result into
+     * bzero: ignored - existing array to write the result into
+     * bscale: ignored - existing array to write the result into
+     * spectra: existing array to write the result into
      * asnumpy: Boolean of whether to return a numpy.ndarray or a cupy.ndarray
     
     Outputs:
@@ -450,9 +450,9 @@ def OptimizeDataLevels4Bit(signals, LFFT, bzero=None, bscale=None, spectra=None,
      * LFFT: number of channels per data stream
      
     Keywords:
-     * bzero: ignores - existing array to write the result into
-     * bscale: ignores - existing array to write the result into
-     * spectra: ignores - existing array to write the result into
+     * bzero: ignored - existing array to write the result into
+     * bscale: ignored - existing array to write the result into
+     * spectra: existing array to write the result into
      * asnumpy: Boolean of whether to return a numpy.ndarray or a cupy.ndarray
     
     Outputs:
