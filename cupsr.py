@@ -169,7 +169,7 @@ __global__ void skmask(const float2 *input,
 """, 'skmask')
 
 
-def ComputeSKMask(signals, lower, upper, asnumpy=False):
+def ComputeSKMask(signals, lower, upper, asnumpy=True):
     """
     Given the output of PulsarEngineRaw, calculate channel weights based on
     spectral kurtosis
@@ -349,7 +349,7 @@ __global__ void opt8(const float *input,
 """, 'opt8')
 
 
-def OptimizeDataLevels8Bit(signals, LFFT, bzero=None, bscale=None, spectra=None, asnumpy=False):
+def OptimizeDataLevels8Bit(signals, LFFT, bzero=None, bscale=None, spectra=None, asnumpy=True):
     """
     Given the output of one of the 'Combine' functions, find the bzero and
     bscale values that yield the best representation of the data as unsigned
@@ -362,7 +362,7 @@ def OptimizeDataLevels8Bit(signals, LFFT, bzero=None, bscale=None, spectra=None,
     Keywords:
      * bzero: ignored - existing array to write the result into
      * bscale: ignored - existing array to write the result into
-     * spectra: existing array to write the result into
+     * spectra: ignored - existing array to write the result into
      * asnumpy: Boolean of whether to return a numpy.ndarray or a cupy.ndarray
     
     Outputs:
@@ -388,6 +388,7 @@ def OptimizeDataLevels8Bit(signals, LFFT, bzero=None, bscale=None, spectra=None,
     else:
         if not isinstance(bscale, cp.ndarray):
             bscale = cp.asarray(bscale)
+    spectra = None
     if spectra is None:
         spectra = cp.empty(shape=(nstand,nsamp), dtype=np.uint8)
     else:
@@ -439,7 +440,7 @@ __global__ void opt4(const float *input,
 """, 'opt4')
 
 
-def OptimizeDataLevels4Bit(signals, LFFT, bzero=None, bscale=None, spectra=None, asnumpy=False):
+def OptimizeDataLevels4Bit(signals, LFFT, bzero=None, bscale=None, spectra=None, asnumpy=True):
     """
     Given the output of one of the 'Combine' functions, find the bzero and
     bscale values that yield the best representation of the data as the lower
@@ -452,7 +453,7 @@ def OptimizeDataLevels4Bit(signals, LFFT, bzero=None, bscale=None, spectra=None,
     Keywords:
      * bzero: ignored - existing array to write the result into
      * bscale: ignored - existing array to write the result into
-     * spectra: existing array to write the result into
+     * spectra: ignored - existing array to write the result into
      * asnumpy: Boolean of whether to return a numpy.ndarray or a cupy.ndarray
     
     Outputs:
@@ -478,6 +479,7 @@ def OptimizeDataLevels4Bit(signals, LFFT, bzero=None, bscale=None, spectra=None,
     else:
         if not isinstance(bscale, cp.ndarray):
             bscale = cp.asarray(bscale)
+    spectra = None
     if spectra is None:
         spectra = cp.empty(shape=(nstand,nsamp), dtype=np.uint8)
     else:
