@@ -1,10 +1,7 @@
 #include "Python.h"
-#include <math.h>
-#include <stdio.h>
-#include <complex.h>
+#include <cmath>
+#include <complex>
 #include <fftw3.h>
-#include <stdlib.h>
-#include <pthread.h>
 
 #ifdef _OPENMP
 	#include <omp.h>
@@ -69,7 +66,7 @@ double getFFTChannelFreq(long i, long LFFT, double centralFreq, double sampleRat
  Coherent Dedispersion, Polarimetry, and Timing" By Stairs, I. H.
 */
 
-void chirpFunction(long LFFT, double centralFreq, double sampleRate, double DM, float complex *chirp) {
+void chirpFunction(long LFFT, double centralFreq, double sampleRate, double DM, Complex32 *chirp) {
 	int i;
 	double freqMHz;
 	double fMHz0, fMHz1;
@@ -90,7 +87,7 @@ void chirpFunction(long LFFT, double centralFreq, double sampleRate, double DM, 
 	for(i=0; i<LFFT; i++) {
 		freqMHz = getFFTChannelFreq(i, LFFT, centralFreq, sampleRate) / 1e6;
 		fMHz1 = freqMHz - fMHz0;
-		*(chirp + i) = cexp(-2.0*NPY_PI*_Complex_I*DCONST*1e6 * DM*fMHz1*fMHz1 / (fMHz0*fMHz0* freqMHz));
+		*(chirp + i) = exp(-TPI*DCONST*1e6 * DM*fMHz1*fMHz1 / (fMHz0*fMHz0* freqMHz));
 	}
 }
 
@@ -103,8 +100,8 @@ PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) {
 	
 	long i, j, k, l, nStand, nChan, nFFT;
 	
-	static char *kwlist[] = {"rawSpectra", "freq1", "freq2", "sampleRate", "DM", "prevRawSpectra", "nextRawSpectra", "outRawSpectra", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OOOddOO|O", kwlist, &drxData, &spectraFreq1, &spectraFreq2, &sRate, &DM, &prevData, &nextData, &drxDataF)) {
+	char const* kwlist[] = {"rawSpectra", "freq1", "freq2", "sampleRate", "DM", "prevRawSpectra", "nextRawSpectra", "outRawSpectra", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OOOddOO|O", const_cast<char **>(kwlist), &drxData, &spectraFreq1, &spectraFreq2, &sRate, &DM, &prevData, &nextData, &drxDataF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		goto fail;
 	}
@@ -216,7 +213,7 @@ PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) {
 	
 	// Create the FFTW plans
 	long N;
-	float complex *inP;
+	Complex32 *inP;
 	fftwf_plan *plansF, *plansB;
 	plansF = (fftwf_plan *) malloc(nStand/2*nChan*sizeof(fftwf_plan));
 	plansB = (fftwf_plan *) malloc(nStand/2*nChan*sizeof(fftwf_plan));
@@ -229,9 +226,15 @@ PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) {
 				N = getCoherentSampleSize(*(cf2 + j), sRate, DM);
 			}
 			
-			inP = (float complex *) fftwf_malloc(N*sizeof(float complex));
-			*(plansF + nChan*i/2 + j) = fftwf_plan_dft_1d(N, inP, inP, FFTW_FORWARD, FFTW_ESTIMATE);
-			*(plansB + nChan*i/2 + j) = fftwf_plan_dft_1d(N, inP, inP, FFTW_BACKWARD, FFTW_ESTIMATE);
+			inP = (Complex32 *) fftwf_malloc(N*sizeof(Complex32));
+			*(plansF + nChan*i/2 + j) = fftwf_plan_dft_1d(N,
+																										reinterpret_cast<fftwf_complex*>(inP),
+																										reinterpret_cast<fftwf_complex*>(inP),
+																										FFTW_FORWARD, FFTW_ESTIMATE);
+			*(plansB + nChan*i/2 + j) = fftwf_plan_dft_1d(N,
+																										reinterpret_cast<fftwf_complex*>(inP),
+																										reinterpret_cast<fftwf_complex*>(inP),
+																										FFTW_BACKWARD, FFTW_ESTIMATE);
 			fftwf_free(inP);
 		}
 	}
@@ -239,15 +242,15 @@ PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) {
 	// Go!
 	long nSets, start, stop, secStartX, secStartY;
 	double cFreq;
-	float complex *chirp;
-	float complex *d0, *d1, *d2, *dF;
+	Complex32 *chirp;
+	Complex32 *d0, *d1, *d2, *dF;
 	
-	float complex *inX, *inY;
+	Complex32 *inX, *inY;
 	
-	d0 = (float complex *) PyArray_DATA(pData);
-	d1 = (float complex *) PyArray_DATA(data);
-	d2 = (float complex *) PyArray_DATA(nData);
-	dF = (float complex *) PyArray_DATA(dataF);
+	d0 = (Complex32 *) PyArray_DATA(pData);
+	d1 = (Complex32 *) PyArray_DATA(data);
+	d2 = (Complex32 *) PyArray_DATA(nData);
+	dF = (Complex32 *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
 		omp_set_dynamic(0);
@@ -277,12 +280,12 @@ PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) {
 				nSets = nFFT / N;
 				
 				// Compute the chirp function
-				chirp = (float complex *) malloc(N*sizeof(float complex));
+				chirp = (Complex32 *) malloc(N*sizeof(Complex32));
 				chirpFunction(N, cFreq, sRate, DM, chirp);
 				
 				// Create the FFTW array
-				inX = (float complex *) fftwf_malloc(N*sizeof(float complex));
-				inY = (float complex *) fftwf_malloc(N*sizeof(float complex));
+				inX = (Complex32 *) fftwf_malloc(N*sizeof(Complex32));
+				inY = (Complex32 *) fftwf_malloc(N*sizeof(Complex32));
 				
 				// Loop over the sets
 				for(l=0; l<2*nSets+1; l++) {
@@ -328,18 +331,26 @@ PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) {
 					}
 					
 					// Forward FFT
-					fftwf_execute_dft(*(plansF + nChan*i/2 + j), inX, inX);
-					fftwf_execute_dft(*(plansF + nChan*i/2 + j), inY, inY);
+					fftwf_execute_dft(*(plansF + nChan*i/2 + j),
+														reinterpret_cast<fftwf_complex*>(inX),
+														reinterpret_cast<fftwf_complex*>(inX));
+					fftwf_execute_dft(*(plansF + nChan*i/2 + j),
+													  reinterpret_cast<fftwf_complex*>(inY),
+														reinterpret_cast<fftwf_complex*>(inY));
 					
 					// Chirp
 					for(k=0; k<N; k++) {
-						inX[k] *= *(chirp + k) / N;
-						inY[k] *= *(chirp + k) / N;
+						inX[k] *= *(chirp + k) / (float) N;
+						inY[k] *= *(chirp + k) / (float) N;
 					}
 					
 					// Backward FFT
-					fftwf_execute_dft(*(plansB + nChan*i/2 + j), inX, inX);
-					fftwf_execute_dft(*(plansB + nChan*i/2 + j), inY, inY);
+					fftwf_execute_dft(*(plansB + nChan*i/2 + j),
+					                  reinterpret_cast<fftwf_complex*>(inX),
+														reinterpret_cast<fftwf_complex*>(inX));
+					fftwf_execute_dft(*(plansB + nChan*i/2 + j),
+													  reinterpret_cast<fftwf_complex*>(inY),
+														reinterpret_cast<fftwf_complex*>(inY));
 					
 					// Save
 					start = l*N/2;

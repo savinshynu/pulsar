@@ -1,10 +1,7 @@
 #include "Python.h"
-#include <math.h>
-#include <stdio.h>
-#include <complex.h>
+#include <cmath>
+#include <complex>
 #include <fftw3.h>
-#include <stdlib.h>
-#include <pthread.h>
 
 #ifdef _OPENMP
 	#include <omp.h>
@@ -29,8 +26,8 @@ PyObject *CombineToIntensity(PyObject *self, PyObject *args, PyObject *kwds) {
 	
 	long ij, i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	static char *kwlist[] = {"signals", "signalsF", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|O", kwlist, &signals, &signalsF)) {
+	char const* kwlist[] = {"signals", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|O", const_cast<char **>(kwlist), &signals, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -84,9 +81,9 @@ PyObject *CombineToIntensity(PyObject *self, PyObject *args, PyObject *kwds) {
 	
 	// Go!
 	long secStartX, secStartY;
-	float complex *a;
+	Complex32 *a;
 	float *b;
-	a = (float complex *) PyArray_DATA(data);
+	a = (Complex32 *) PyArray_DATA(data);
 	b = (float *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
@@ -106,8 +103,8 @@ PyObject *CombineToIntensity(PyObject *self, PyObject *args, PyObject *kwds) {
 			
 			for(k=0; k<nFFT; k++) {
 				// I
-				*(b + nSamps*(i/2) + nChan*k + j) = cabs2f(*(a + secStartX + k)) + \
-				                                    cabs2f(*(a + secStartY + k));
+				*(b + nSamps*(i/2) + nChan*k + j) = abs2(*(a + secStartX + k)) + \
+				                                    abs2(*(a + secStartY + k));
 			}
 		}
 	}
@@ -140,8 +137,8 @@ PyObject *CombineToLinear(PyObject *self, PyObject *args, PyObject *kwds) {
 	
 	long ij, i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	static char *kwlist[] = {"signals", "signalsF", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|O", kwlist, &signals, &signalsF)) {
+	char const* kwlist[] = {"signals", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|O", const_cast<char **>(kwlist), &signals, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -195,9 +192,9 @@ PyObject *CombineToLinear(PyObject *self, PyObject *args, PyObject *kwds) {
 	
 	// Go!
 	long secStart;
-	float complex *a;
+	Complex32 *a;
 	float *b;
-	a = (float complex *) PyArray_DATA(data);
+	a = (Complex32 *) PyArray_DATA(data);
 	b = (float *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
@@ -215,7 +212,7 @@ PyObject *CombineToLinear(PyObject *self, PyObject *args, PyObject *kwds) {
 			secStart = nSamps*i + nFFT*j;
 			
 			for(k=0; k<nFFT; k++) {
-				*(b + nSamps*i + nChan*k + j) = cabs2f(*(a + secStart + k));
+				*(b + nSamps*i + nChan*k + j) = abs2(*(a + secStart + k));
 			}
 		}
 	}
@@ -248,8 +245,8 @@ PyObject *CombineToCircular(PyObject *self, PyObject *args, PyObject *kwds) {
 	
 	long ij, i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	static char *kwlist[] = {"signals", "signalsF", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|O", kwlist, &signals, &signalsF)) {
+	char const* kwlist[] = {"signals", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|O", const_cast<char **>(kwlist), &signals, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -303,9 +300,9 @@ PyObject *CombineToCircular(PyObject *self, PyObject *args, PyObject *kwds) {
 	
 	// Go!
 	long secStartX, secStartY;
-	float complex *a;
+	Complex32 *a;
 	float *b;
-	a = (float complex *) PyArray_DATA(data);
+	a = (Complex32 *) PyArray_DATA(data);
 	b = (float *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
@@ -325,13 +322,13 @@ PyObject *CombineToCircular(PyObject *self, PyObject *args, PyObject *kwds) {
 			
 			for(k=0; k<nFFT; k++) {
 				// LL
-				*(b + nSamps*(i+0) + nChan*k + j) = cabs2f( \
-				                                           *(a + secStartX + k) + *(a + secStartY + k)*_Complex_I \
+				*(b + nSamps*(i+0) + nChan*k + j) = abs2( \
+				                                         *(a + secStartX + k) + *(a + secStartY + k)*Complex32(0,1) \
 				                                         ) / 2.0;
 				
 				// RR
-				*(b + nSamps*(i+1) + nChan*k + j) =  cabs2f( \
-				                                            *(a + secStartX + k) - *(a + secStartY + k)*_Complex_I \
+				*(b + nSamps*(i+1) + nChan*k + j) =  abs2( \
+				                                          *(a + secStartX + k) - *(a + secStartY + k)*Complex32(0,1) \
 				                                          ) / 2.0;
 			}
 		}
@@ -365,8 +362,8 @@ PyObject *CombineToStokes(PyObject *self, PyObject *args, PyObject *kwds) {
 	
 	long ij, i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	static char *kwlist[] = {"signals", "signalsF", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|O", kwlist, &signals, &signalsF)) {
+	char const* kwlist[] = {"signals", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|O", const_cast<char **>(kwlist), &signals, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -420,9 +417,9 @@ PyObject *CombineToStokes(PyObject *self, PyObject *args, PyObject *kwds) {
 	
 	// Go!
 	long secStartX, secStartY;
-	float complex *a;
+	Complex32 *a;
 	float *b;
-	a = (float complex *) PyArray_DATA(data);
+	a = (Complex32 *) PyArray_DATA(data);
 	b = (float *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
@@ -442,21 +439,21 @@ PyObject *CombineToStokes(PyObject *self, PyObject *args, PyObject *kwds) {
 			
 			for(k=0; k<nFFT; k++) {
 				// I
-				*(b + nSamps*(4*(i/2)+0) + nChan*k + j) = cabs2(*(a + secStartX + k)) + \
-				                                          cabs2(*(a + secStartY + k));
+				*(b + nSamps*(4*(i/2)+0) + nChan*k + j) = abs2(*(a + secStartX + k)) + \
+				                                          abs2(*(a + secStartY + k));
 				
 				// Q
-				*(b + nSamps*(4*(i/2)+1) + nChan*k + j)  = cabs2(*(a + secStartX + k)) - \
-				                                           cabs2(*(a + secStartY + k));
+				*(b + nSamps*(4*(i/2)+1) + nChan*k + j)  = abs2(*(a + secStartX + k)) - \
+				                                           abs2(*(a + secStartY + k));
 				
 				// U
 				*(b + nSamps*(4*(i/2)+2) + nChan*k + j) = 2.0 * \
-				                                          creal(*(a + secStartX + k) * \
+				                                          real(*(a + secStartX + k) * \
 				                                          conj(*(a + secStartY + k)));
 				
 				// V
 				*(b + nSamps*(4*(i/2)+3) + nChan*k + j) = -2.0 * \
-				                                          cimag(*(a + secStartX + k) * \
+				                                          imag(*(a + secStartX + k) * \
 				                                          conj(*(a + secStartY + k)));
 			}
 		}

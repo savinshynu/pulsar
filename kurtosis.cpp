@@ -1,10 +1,7 @@
 #include "Python.h"
-#include <math.h>
-#include <stdio.h>
-#include <complex.h>
+#include <cmath>
+#include <complex>
 #include <fftw3.h>
-#include <stdlib.h>
-#include <pthread.h>
 
 #ifdef _OPENMP
 	#include <omp.h>
@@ -62,9 +59,9 @@ PyObject *ComputeSKMask(PyObject *self, PyObject *args, PyObject *kwds) {
 	// Go!
 	long secStart;
 	float tempV, tempV2, temp2V;
-	float complex *a;
+	Complex32 *a;
 	float *b;
-	a = (float complex *) PyArray_DATA(data);
+	a = (Complex32 *) PyArray_DATA(data);
 	b = (float *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
@@ -84,7 +81,7 @@ PyObject *ComputeSKMask(PyObject *self, PyObject *args, PyObject *kwds) {
 			tempV2 = 0.0;
 			temp2V = 0.0;
 			for(k=0; k<nFFT; k++) {
-				tempV  = cabs2f(*(a + secStart + k));
+				tempV  = abs2(*(a + secStart + k));
 				temp2V += tempV*tempV;
 				tempV2 += tempV;
 			}

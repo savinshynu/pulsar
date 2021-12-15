@@ -1,10 +1,5 @@
 #include "Python.h"
-#include <math.h>
-#include <stdio.h>
-#include <complex.h>
-#include <fftw3.h>
-#include <stdlib.h>
-#include <pthread.h>
+#include <cmath>
 
 #ifdef _OPENMP
 	#include <omp.h>
@@ -29,8 +24,8 @@ PyObject *OptimizeDataLevels8Bit(PyObject *self, PyObject *args, PyObject *kwds)
 	long ij, i, j, k, nStand, nSamps, nFFT;
 	int nChan = 64;
 	
-	static char *kwlist[] = {"spectra", "nChan", "bzero", "bscale", "bdata", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "Oi|OOO", kwlist, &spectra, &nChan, &bzero, &bscale, &bdata)) {
+	char const* kwlist[] = {"spectra", "nChan", "bzero", "bscale", "bdata", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "Oi|OOO", const_cast<char **>(kwlist), &spectra, &nChan, &bzero, &bscale, &bdata)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		goto fail;
 	}
@@ -214,8 +209,8 @@ PyObject *OptimizeDataLevels4Bit(PyObject *self, PyObject *args, PyObject *kwds)
 	long ij, i, j, k, nStand, nSamps, nFFT;
 	int nChan = 64;
 	
-	static char *kwlist[] = {"spectra", "nChan", "bzero", "bscale", "bdata", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "Oi|OOO", kwlist, &spectra, &nChan, &bzero, &bscale, &bdata)) {
+	char const* kwlist[] = {"spectra", "nChan", "bzero", "bscale", "bdata", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "Oi|OOO", const_cast<char **>(kwlist), &spectra, &nChan, &bzero, &bscale, &bdata)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		goto fail;
 	}

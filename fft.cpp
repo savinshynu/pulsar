@@ -1,10 +1,7 @@
 #include "Python.h"
-#include <math.h>
-#include <stdio.h>
-#include <complex.h>
+#include <cmath>
+#include <complex>
 #include <fftw3.h>
-#include <stdlib.h>
-#include <pthread.h>
 
 #ifdef _OPENMP
 	#include <omp.h>
@@ -49,8 +46,8 @@ PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
 	
 	long ij, i, j, k, nStand, nSamps, nFFT;
 	
-	static char *kwlist[] = {"signals", "LFFT", "signalsF", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|iO", kwlist, &signals, &nChan, &signalsF)) {
+	char const* kwlist[] = {"signals", "LFFT", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|iO", const_cast<char **>(kwlist), &signals, &nChan, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -109,24 +106,27 @@ PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
 	Py_BEGIN_ALLOW_THREADS
 	
 	// Create the FFTW plan
-	float complex *inP, *in;
-	inP = (float complex*) fftwf_malloc(sizeof(float complex) * nChan);
+	Complex32 *inP, *in;
+	inP = (Complex32*) fftwf_malloc(sizeof(Complex32) * nChan);
 	fftwf_plan p;
-	p = fftwf_plan_dft_1d(nChan, inP, inP, FFTW_FORWARD, FFTW_ESTIMATE);
+	p = fftwf_plan_dft_1d(nChan,
+		                    reinterpret_cast<fftwf_complex*>(inP),
+												reinterpret_cast<fftwf_complex*>(inP),
+												FFTW_FORWARD, FFTW_ESTIMATE);
 	
 	// FFT
 	long secStart;
-	float complex *a;
-	float complex *b;
-	a = (float complex *) PyArray_DATA(data);
-	b = (float complex *) PyArray_DATA(dataF);
+	Complex32 *a;
+	Complex32 *b;
+	a = (Complex32 *) PyArray_DATA(data);
+	b = (Complex32 *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
 		omp_set_dynamic(0);
 		#pragma omp parallel default(shared) private(in, secStart, i, j, k)
 	#endif
 	{
-		in = (float complex*) fftwf_malloc(sizeof(float complex) * nChan);
+		in = (Complex32*) fftwf_malloc(sizeof(Complex32) * nChan);
 		
 		#ifdef _OPENMP
 			#pragma omp for schedule(OMP_SCHEDULER)
@@ -141,13 +141,15 @@ PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
 				in[k]  = *(a + secStart + k);
 			}
 			
-			fftwf_execute_dft(p, in, in);
+			fftwf_execute_dft(p,
+											  reinterpret_cast<fftwf_complex*>(in),
+												reinterpret_cast<fftwf_complex*>(in));
 			
 			for(k=0; k<nChan/2+nChan%2; k++) {
-				*(b + nFFT*nChan*i + nFFT*(k + nChan/2) + j) = in[k] / sqrt(nChan);
+				*(b + nFFT*nChan*i + nFFT*(k + nChan/2) + j) = in[k] / (float) sqrt(nChan);
 			}
 			for(k=nChan/2+nChan%2; k<nChan; k++) {
-				*(b + nFFT*nChan*i + nFFT*(k - nChan/2 - nChan%2) + j) = in[k] / sqrt(nChan);
+				*(b + nFFT*nChan*i + nFFT*(k - nChan/2 - nChan%2) + j) = in[k] / (float) sqrt(nChan);
 			}
 		}
 		
@@ -188,8 +190,8 @@ PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject *kwds) 
 	
 	long ij, i, j, k, nStand, nSamps, nFFT;
 	
-	static char *kwlist[] = {"signals", "window", "LFFT", "signalsF", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OO|iO", kwlist, &signals, &window, &nChan, &signalsF)) {
+	char const* kwlist[] = {"signals", "window", "LFFT", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OO|iO", const_cast<char **>(kwlist), &signals, &window, &nChan, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		goto fail;
 	}
@@ -258,18 +260,21 @@ PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject *kwds) 
 	Py_BEGIN_ALLOW_THREADS
 	
 	// Create the FFTW plan
-	float complex *inP, *in;
-	inP = (float complex*) fftwf_malloc(sizeof(float complex) * nChan);
+	Complex32 *inP, *in;
+	inP = (Complex32*) fftwf_malloc(sizeof(Complex32) * nChan);
 	fftwf_plan p;
-	p = fftwf_plan_dft_1d(nChan, inP, inP, FFTW_FORWARD, FFTW_ESTIMATE);
+	p = fftwf_plan_dft_1d(nChan,
+											  reinterpret_cast<fftwf_complex*>(inP),
+												reinterpret_cast<fftwf_complex*>(inP),
+												FFTW_FORWARD, FFTW_ESTIMATE);
 	
 	// FFT
 	long secStart;
-	float complex *a;
-	float complex *b;
+	Complex32 *a;
+	Complex32 *b;
 	double *c;
-	a = (float complex *) PyArray_DATA(data);
-	b = (float complex *) PyArray_DATA(dataF);
+	a = (Complex32 *) PyArray_DATA(data);
+	b = (Complex32 *) PyArray_DATA(dataF);
 	c = (double *) PyArray_DATA(win);
 	
 	#ifdef _OPENMP
@@ -277,7 +282,7 @@ PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject *kwds) 
 		#pragma omp parallel default(shared) private(in, secStart, i, j, k)
 	#endif
 	{
-		in = (float complex*) fftwf_malloc(sizeof(float complex) * nChan);
+		in = (Complex32*) fftwf_malloc(sizeof(Complex32) * nChan);
 		
 		#ifdef _OPENMP
 			#pragma omp for schedule(OMP_SCHEDULER)
@@ -293,13 +298,15 @@ PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject *kwds) 
 				in[k] *= *(c + k);
 			}
 			
-			fftwf_execute_dft(p, in, in);
+			fftwf_execute_dft(p,
+												reinterpret_cast<fftwf_complex*>(in),
+												reinterpret_cast<fftwf_complex*>(in));
 			
 			for(k=0; k<nChan/2+nChan%2; k++) {
-				*(b + nFFT*nChan*i + nFFT*(k + nChan/2) + j) = in[k] / sqrt(nChan);
+				*(b + nFFT*nChan*i + nFFT*(k + nChan/2) + j) = in[k] / (float) sqrt(nChan);
 			}
 			for(k=nChan/2+nChan%2; k<nChan; k++) {
-				*(b + nFFT*nChan*i + nFFT*(k - nChan/2 - nChan%2) + j) = in[k] / sqrt(nChan);
+				*(b + nFFT*nChan*i + nFFT*(k - nChan/2 - nChan%2) + j) = in[k] / (float) sqrt(nChan);
 			}
 		}
 		
@@ -350,8 +357,8 @@ PyObject *PhaseRotator(PyObject *self, PyObject *args, PyObject *kwds) {
 
 	long ij, i, j, k, nStand, nSamps, nChan, nFFT;
 	
-	static char *kwlist[] = {"signals", "freq1", "freq2", "delays", "signalsF", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OOOd|O", kwlist, &signals, &f1, &f2, &delay, &signalsF)) {
+	char const* kwlist[] = {"signals", "freq1", "freq2", "delays", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OOOd|O", const_cast<char **>(kwlist), &signals, &f1, &f2, &delay, &signalsF)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		goto fail;
 	}
@@ -377,6 +384,7 @@ PyObject *PhaseRotator(PyObject *self, PyObject *args, PyObject *kwds) {
 	nStand = (long) PyArray_DIM(data, 0);
 	nChan  = (long) PyArray_DIM(data, 1);
 	nFFT   = (long) PyArray_DIM(data, 2);
+	nSamps = nChan*nFFT;
 	
 	// Validate
 	if( PyArray_DIM(freq1, 0) != nChan ) {
@@ -431,12 +439,12 @@ PyObject *PhaseRotator(PyObject *self, PyObject *args, PyObject *kwds) {
 	// Go!
 	long secStart;
 	double tempF;
-	float complex *a, *d;
+	Complex32 *a, *d;
 	double *b, *c;
-	a = (float complex *) PyArray_DATA(data);
+	a = (Complex32 *) PyArray_DATA(data);
 	b = (double *) PyArray_DATA(freq1);
 	c = (double *) PyArray_DATA(freq2);
-	d = (float complex *) PyArray_DATA(dataF);
+	d = (Complex32 *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
 		omp_set_dynamic(0);
@@ -458,7 +466,7 @@ PyObject *PhaseRotator(PyObject *self, PyObject *args, PyObject *kwds) {
 			}
 			
 			for(k=0; k<nFFT; k++) {
-				*(d + secStart + k) = *(a + secStart + k) * cexp(2*NPY_PI*_Complex_I*tempF*delay);
+				*(d + secStart + k) = Complex64(*(a + secStart + k)) * exp(TPI*tempF*delay);
 			}
 		}
 	}
