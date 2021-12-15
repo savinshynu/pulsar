@@ -139,7 +139,7 @@ Outputs:\n\
 
 PyObject *BindOpenMPToCores(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *cores, *core;
-	int ret, nthread, t, tid, ncore, old_core, c;
+	int ret, nthread, t, ncore, old_core, c;
 	
 	if(!PyArg_ParseTuple(args, "O", &cores)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
@@ -151,7 +151,7 @@ PyObject *BindOpenMPToCores(PyObject *self, PyObject *args, PyObject *kwds) {
 		return NULL;
 	}
 	
-	nthread = PyList_Size(cores);
+	nthread = (int) PyList_Size(cores);
 	ncore = getCoreCount();
 	if( ncore == -101 ) {
 		PyErr_Warn(PyExc_RuntimeWarning, "Changing of the thread core binding is not supported on this OS");

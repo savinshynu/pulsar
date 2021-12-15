@@ -109,7 +109,7 @@ void pulsar_engine(long nStand,
 
 PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *signals, *signalsF=NULL;
-	PyArrayObject *data, *dataF;
+	PyArrayObject *data=NULL, *dataF=NULL;
 	int nChan = 64;
 	
 	long nStand, nSamps, nFFT;

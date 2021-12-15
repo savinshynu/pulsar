@@ -22,7 +22,7 @@
 
 PyObject *CombineToIntensity(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *signals, *signalsF=NULL;
-	PyArrayObject *data, *dataF;
+	PyArrayObject *data=NULL, *dataF=NULL;
 	
 	long ij, i, j, k, nStand, nSamps, nChan, nFFT;
 	

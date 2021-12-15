@@ -17,7 +17,7 @@
 
 static PyObject *FastAxis0MinMax(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *pulses, *pulsesF;
-	PyArrayObject *data, *dataF;
+	PyArrayObject *data=NULL, *dataF=NULL;
 	
 	long i, j, nSamps, nParams;
 	
@@ -108,7 +108,7 @@ Outputs:\n\
 
 static PyObject *FastHistogram(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *pulses, *edges, *pulsesF;
-	PyArrayObject *data, *bins, *dataF;
+	PyArrayObject *data=NULL, *bins=NULL, *dataF=NULL;
 	
 	long i, j, k, l, nSamps, nBins;
 	
@@ -248,7 +248,7 @@ Outputs:\n\
 
 static PyObject *FastAxis0Mean(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *spectra, *spectraF;
-	PyArrayObject *data, *dataF;
+	PyArrayObject *data=NULL, *dataF=NULL;
 	
 	long i, j, k, jk, nStand, nSamps, nChans, iPrime;
 	
@@ -344,7 +344,7 @@ Outputs:\n\
 
 static PyObject *FastAxis1MinMax(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *spectra, *spectraF;
-	PyArrayObject *data, *dataF;
+	PyArrayObject *data=NULL, *dataF=NULL;
 	
 	long i, j, k, nStand, nSamps, nChans;
 	long int chanMin, chanMax;
@@ -445,7 +445,7 @@ Outputs:\n\
 
 static PyObject *FastAxis0Bandpass(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *spectra, *bandpass, *spectraF;
-	PyArrayObject *data, *dataB;
+	PyArrayObject *data=NULL, *dataB=NULL;
 	
 	long i, j, k, jk, nStand, nSamps, nChans;
 	
@@ -535,7 +535,7 @@ int cmpfloat(const void *a, const void *b) {
 
 static PyObject *FastAxis0Median(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *spectra, *spectraF;
-	PyArrayObject *data, *dataF;
+	PyArrayObject *data=NULL, *dataF=NULL;
 	
 	long i, j, k, nStand, nSamps, nChans, iPrime;
 	
@@ -641,7 +641,7 @@ Outputs:\n\
 
 static PyObject *FastAxis1Percentiles5And99(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *spectra, *spectraF;
-	PyArrayObject *data;
+	PyArrayObject *data=NULL;
 	
 	long i, j, k, nStand, nSamps, nChans, iPrime;
 	long int stand, chanMin, chanMax;

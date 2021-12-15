@@ -22,7 +22,7 @@
 
 PyObject *ComputeSKMask(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *signals, *signalsF;
-	PyArrayObject *data, *dataF;
+	PyArrayObject *data=NULL, *dataF=NULL;
 	double lower, upper;
 	long ij, i, j, k, nStand, nSamps, nChan, nFFT;
 	
@@ -124,7 +124,7 @@ Outputs:\n\
 
 PyObject *ComputePseudoSKMask(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *signals, *signalsF;
-	PyArrayObject *data, *dataF;
+	PyArrayObject *data=NULL, *dataF=NULL;
 	double lower, upper;
 	long ij, i, j, k, nStand, nSamps, nChan, nFFT, skN;
 	
