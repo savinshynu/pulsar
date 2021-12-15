@@ -179,7 +179,7 @@ Input keywords are:\n\
  * LFFT: number of FFT channels to make (default=64)\n\
 \n\
 Outputs:\n\
- * sub-integration: 2-D numpy.uint8 (stands by channels) of FFT'd data\n\
+ * sub-integration: 2-D numpy.complex64 (stands by channels) of FFT'd data\n\
 ");
 
 
@@ -346,7 +346,7 @@ Input keywords are:\n\
  * LFFT: number of FFT channels to make (default=64)\n\
 \n\
 Outputs:\n\
- * sub-integration: 2-D numpy.uint8 (stands by channels) of FFT'd data\n\
+ * sub-integration: 2-D numpy.complex64 (stands by channels) of FFT'd data\n\
 ");
 
 
