@@ -39,69 +39,16 @@ void read_wisdom(char *filename, PyObject *m) {
 }
 
 
-PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
-	PyObject *signals, *signalsF=NULL;
-	PyArrayObject *data, *dataF;
-	int nChan = 64;
-	
-	long ij, i, j, k, nStand, nSamps, nFFT;
-	
-	char const* kwlist[] = {"signals", "LFFT", "signalsF", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|iO", const_cast<char **>(kwlist), &signals, &nChan, &signalsF)) {
-		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
-		return NULL;
-	}
-	
-	// Bring the data into C and make it usable
-	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_COMPLEX64, 2, 2);
-	if( data == NULL ) {
-		PyErr_Format(PyExc_RuntimeError, "Cannot cast input signals array to 2-D complex64");
-		return NULL;
-	}
-	
-	// Get the properties of the data
-	nStand = (long) PyArray_DIM(data, 0);
-	nSamps = (long) PyArray_DIM(data, 1);
-	
-	// Find out how large the output array needs to be and initialize it
-	nFFT = nSamps / nChan;
-	npy_intp dims[3];
-	dims[0] = (npy_intp) nStand;
-	dims[1] = (npy_intp) nChan;
-	dims[2] = (npy_intp) (nSamps/nChan);
-	if( signalsF != NULL && signalsF != Py_None ) {
-		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_COMPLEX64, 3, 3);
-		if(dataF == NULL) {
-			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 3-D complex64");
-			Py_XDECREF(data);
-			return NULL;
-		}
-		if(PyArray_DIM(dataF, 0) != dims[0]) {
-			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of stands");
-			Py_XDECREF(data);
-			Py_XDECREF(dataF);
-			return NULL;
-		}
-		if(PyArray_DIM(dataF, 1) != dims[1]) {
-			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of channels");
-			Py_XDECREF(data);
-			Py_XDECREF(dataF);
-			return NULL;
-		}
-		if(PyArray_DIM(dataF, 2) != dims[2]) {
-			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of FFT windows");
-			Py_XDECREF(data);
-			Py_XDECREF(dataF);
-			return NULL;
-		}
-	} else {
-		dataF = (PyArrayObject*) PyArray_ZEROS(3, dims, NPY_COMPLEX64, 0);
-		if(dataF == NULL) {
-			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
-			Py_XDECREF(data);
-			return NULL;
-		}
-	}
+template<typename InType, typename OutType>
+void pulsar_engine(long nStand,
+									 long nSamps,
+									 long nFFT,
+									 int nChan,
+									 InType const* data,
+									 double const* window,
+									 OutType* fdomain) {
+	// Setup
+  long ij, i, j, k;
 	
 	Py_BEGIN_ALLOW_THREADS
 	
@@ -116,10 +63,6 @@ PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
 	
 	// FFT
 	long secStart;
-	Complex32 *a;
-	Complex32 *b;
-	a = (Complex32 *) PyArray_DATA(data);
-	b = (Complex32 *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
 		omp_set_dynamic(0);
@@ -138,7 +81,10 @@ PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
 			secStart = nSamps * i + nChan*j;
 			
 			for(k=0; k<nChan; k++) {
-				in[k]  = *(a + secStart + k);
+				in[k]  = Complex32(*(data + 2*secStart + 2*k + 0), *(data + 2*secStart + 2*k + 1));
+				if( window != NULL ) {
+          in[k] *= *(window + k);
+        }
 			}
 			
 			fftwf_execute_dft(p,
@@ -146,10 +92,10 @@ PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
 												reinterpret_cast<fftwf_complex*>(in));
 			
 			for(k=0; k<nChan/2+nChan%2; k++) {
-				*(b + nFFT*nChan*i + nFFT*(k + nChan/2) + j) = in[k] / (float) sqrt(nChan);
+				*(fdomain + nFFT*nChan*i + nFFT*(k + nChan/2) + j) = in[k] / (float) sqrt(nChan);
 			}
 			for(k=nChan/2+nChan%2; k<nChan; k++) {
-				*(b + nFFT*nChan*i + nFFT*(k - nChan/2 - nChan%2) + j) = in[k] / (float) sqrt(nChan);
+				*(fdomain + nFFT*nChan*i + nFFT*(k - nChan/2 - nChan%2) + j) = in[k] / (float) sqrt(nChan);
 			}
 		}
 		
@@ -159,6 +105,77 @@ PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
 	fftwf_free(inP);
 	
 	Py_END_ALLOW_THREADS
+}
+
+PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
+	PyObject *signals, *signalsF=NULL;
+	PyArrayObject *data, *dataF;
+	int nChan = 64;
+	
+	long nStand, nSamps, nFFT;
+	
+	char const* kwlist[] = {"signals", "LFFT", "signalsF", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|iO", const_cast<char **>(kwlist), &signals, &nChan, &signalsF)) {
+		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
+		goto fail;
+	}
+	
+	// Bring the data into C and make it usable
+	data = (PyArrayObject *) PyArray_ContiguousFromObject(signals, NPY_COMPLEX64, 2, 2);
+	if( data == NULL ) {
+		PyErr_Format(PyExc_RuntimeError, "Cannot cast input signals array to 2-D complex64");
+		goto fail;
+	}
+	
+	// Get the properties of the data
+	nStand = (long) PyArray_DIM(data, 0);
+	nSamps = (long) PyArray_DIM(data, 1);
+	
+	// Find out how large the output array needs to be and initialize it
+	nFFT = nSamps / nChan;
+	npy_intp dims[3];
+	dims[0] = (npy_intp) nStand;
+	dims[1] = (npy_intp) nChan;
+	dims[2] = (npy_intp) (nSamps/nChan);
+	if( signalsF != NULL && signalsF != Py_None ) {
+		dataF = (PyArrayObject *) PyArray_ContiguousFromObject(signalsF, NPY_COMPLEX64, 3, 3);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_RuntimeError, "Cannot cast output signalsF array to 3-D complex64");
+		  goto fail;
+		}
+		if(PyArray_DIM(dataF, 0) != dims[0]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of stands");
+			goto fail;
+		}
+		if(PyArray_DIM(dataF, 1) != dims[1]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of channels");
+			goto fail;
+		}
+		if(PyArray_DIM(dataF, 2) != dims[2]) {
+			PyErr_Format(PyExc_RuntimeError, "signalsF has an unexpected number of FFT windows");
+			goto fail;
+		}
+	} else {
+		dataF = (PyArrayObject*) PyArray_ZEROS(3, dims, NPY_COMPLEX64, 0);
+		if(dataF == NULL) {
+			PyErr_Format(PyExc_MemoryError, "Cannot create output array");
+			goto fail;
+		}
+	}
+	
+	#define LAUNCH_PULSAR_ENGINE(IterType) \
+        pulsar_engine<IterType>(nStand, nSamps, nFFT, nChan, \
+                                (IterType*) PyArray_DATA(data), \
+																NULL, \
+                                (Complex32*) PyArray_DATA(dataF))
+    
+    switch( PyArray_TYPE(data) ){
+        case( NPY_INT8       ): LAUNCH_PULSAR_ENGINE(int8_t); break;
+        case( NPY_COMPLEX64  ): LAUNCH_PULSAR_ENGINE(float);  break;
+        default: PyErr_Format(PyExc_RuntimeError, "Unsupport input data type"); goto fail;
+    }
+    
+#undef LAUNCH_PULSAR_ENGINE
 	
 	signalsF = Py_BuildValue("O", PyArray_Return(dataF));
 	
@@ -166,6 +183,12 @@ PyObject *PulsarEngineRaw(PyObject *self, PyObject *args, PyObject *kwds) {
 	Py_XDECREF(dataF);
 	
 	return signalsF;
+	
+fail:
+    Py_XDECREF(data);
+    Py_XDECREF(dataF);
+    
+    return NULL;
 }
 
 char PulsarEngineRaw_doc[] = PyDoc_STR(\
@@ -188,7 +211,7 @@ PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject *kwds) 
 	PyArrayObject *data=NULL, *win=NULL, *dataF=NULL;
 	int nChan = 64;
 	
-	long ij, i, j, k, nStand, nSamps, nFFT;
+	long nStand, nSamps, nFFT;
 	
 	char const* kwlist[] = {"signals", "window", "LFFT", "signalsF", NULL};
 	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OO|iO", const_cast<char **>(kwlist), &signals, &window, &nChan, &signalsF)) {
@@ -257,65 +280,19 @@ PyObject *PulsarEngineRawWindow(PyObject *self, PyObject *args, PyObject *kwds) 
 		}
 	}
 	
-	Py_BEGIN_ALLOW_THREADS
-	
-	// Create the FFTW plan
-	Complex32 *inP, *in;
-	inP = (Complex32*) fftwf_malloc(sizeof(Complex32) * nChan);
-	fftwf_plan p;
-	p = fftwf_plan_dft_1d(nChan,
-											  reinterpret_cast<fftwf_complex*>(inP),
-												reinterpret_cast<fftwf_complex*>(inP),
-												FFTW_FORWARD, FFTW_ESTIMATE);
-	
-	// FFT
-	long secStart;
-	Complex32 *a;
-	Complex32 *b;
-	double *c;
-	a = (Complex32 *) PyArray_DATA(data);
-	b = (Complex32 *) PyArray_DATA(dataF);
-	c = (double *) PyArray_DATA(win);
-	
-	#ifdef _OPENMP
-		omp_set_dynamic(0);
-		#pragma omp parallel default(shared) private(in, secStart, i, j, k)
-	#endif
-	{
-		in = (Complex32*) fftwf_malloc(sizeof(Complex32) * nChan);
-		
-		#ifdef _OPENMP
-			#pragma omp for schedule(OMP_SCHEDULER)
-		#endif
-		for(ij=0; ij<nStand*nFFT; ij++) {
-			i = ij / nFFT;
-			j = ij % nFFT;
-			
-			secStart = nSamps * i + nChan*j;
-			
-			for(k=0; k<nChan; k++) {
-				in[k]  = *(a + secStart + k);
-				in[k] *= *(c + k);
-			}
-			
-			fftwf_execute_dft(p,
-												reinterpret_cast<fftwf_complex*>(in),
-												reinterpret_cast<fftwf_complex*>(in));
-			
-			for(k=0; k<nChan/2+nChan%2; k++) {
-				*(b + nFFT*nChan*i + nFFT*(k + nChan/2) + j) = in[k] / (float) sqrt(nChan);
-			}
-			for(k=nChan/2+nChan%2; k<nChan; k++) {
-				*(b + nFFT*nChan*i + nFFT*(k - nChan/2 - nChan%2) + j) = in[k] / (float) sqrt(nChan);
-			}
-		}
-		
-		fftwf_free(in);
-	}
-	fftwf_destroy_plan(p);
-	fftwf_free(inP);
-	
-	Py_END_ALLOW_THREADS
+	#define LAUNCH_PULSAR_ENGINE(IterType) \
+        pulsar_engine<IterType>(nStand, nSamps, nFFT, nChan, \
+                                (IterType*) PyArray_DATA(data), \
+																(double*) PyArray_DATA(win), \
+                                (Complex32*) PyArray_DATA(dataF))
+    
+    switch( PyArray_TYPE(data) ){
+        case( NPY_INT8       ): LAUNCH_PULSAR_ENGINE(int8_t); break;
+        case( NPY_COMPLEX64  ): LAUNCH_PULSAR_ENGINE(float);  break;
+        default: PyErr_Format(PyExc_RuntimeError, "Unsupport input data type"); goto fail;
+    }
+    
+#undef LAUNCH_PULSAR_ENGINE
 	
 	signalsF = Py_BuildValue("O", PyArray_Return(dataF));
 	
