@@ -242,9 +242,9 @@ def main(args):
         pfo.hdr.npol = nPols
         pfo.hdr.summed_polns = 1 if (not args.no_summing) else 0
         pfo.hdr.obs_mode = "SEARCH"
-        pfo.hdr.telescope = "LWA"
-        pfo.hdr.frontend = "LWA"
-        pfo.hdr.backend = "DRSpectrometer"
+        pfo.hdr.telescope = "OVRO-LWA"
+        pfo.hdr.frontend = "OVRO-LWA"
+        pfo.hdr.backend = "Beamformer"
         pfo.hdr.project_id = "Pulsar"
         pfo.hdr.ra_str = args.ra
         pfo.hdr.dec_str = args.dec
