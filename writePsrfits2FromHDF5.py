@@ -220,7 +220,7 @@ def main(args):
         OptimizeDataLevels = OptimizeDataLevels8Bit
         
     for t in range(1, 2+1):
-        if t == 2 and obs1Tuning2 is None:
+        if t == 2 and obs1tuning2 is None:
             continue
             
         ## Basic structure and bounds
@@ -387,7 +387,7 @@ def main(args):
         
         ## Write the spectra to the PSRFITS files
         for j,sp,bz,bs,wt in zip(range(2), (bdata1, bdata2), (bzero1, bzero2), (bscale1, bscale2), (weight1, weight2)):
-            if j == 1 and obs1Tuning2 is None:
+            if j == 1 and obs1tuning2 is None:
                 continue
                 
             ## Time
