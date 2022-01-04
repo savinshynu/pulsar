@@ -115,7 +115,10 @@ def main(args):
     
     ## What's in the data?
     obs1tuning1 = obs1['Tuning1']
-    obs1tuning2 = obs1['Tuning2']
+    try:
+        obs1tuning2 = obs1['Tuning2']
+    except KeyError:
+        obs1tuning2 = None
     
     nFramesFile = obs1['time'].shape[0]
     srate = float(obs1.attrs['sampleRate'])
@@ -124,7 +127,10 @@ def main(args):
     nchan = int(obs1.attrs['nChan'])
     chanOffset = LFFT - nchan		# Packing offset to deal with old HDF5 files that contain only LFFT-1 channels
     central_freq1 = obs1tuning1['freq'][LFFT//2-chanOffset]
-    central_freq2 = obs1tuning2['freq'][LFFT//2-chanOffset]
+    try:
+        central_freq2 = obs1tuning2['freq'][LFFT//2-chanOffset]
+    except TypeError:
+        central_freq2 = 0.0
     data_products = list(obs1tuning1)
     data_products.sort()
     try:
@@ -214,6 +220,9 @@ def main(args):
         OptimizeDataLevels = OptimizeDataLevels8Bit
         
     for t in range(1, 2+1):
+        if t == 2 and obs1Tuning2 is None:
+            continue
+            
         ## Basic structure and bounds
         pfo = pfu.psrfits()
         pfo.basefilename = "%s_b%it%i" % (args.output, beam, t)
@@ -270,6 +279,9 @@ def main(args):
         pfu_out.append(pfo)
         
     for i,t in enumerate((obs1tuning1, obs1tuning2)):
+        if i == 1 and t is None:
+            continue
+            
         # Define the frequencies available in the file (in MHz) making sure to correct the array
         # if chanOffset is not zero
         tfreqs = numpy.zeros(LFFT, dtype=t['freq'].dtype)
@@ -337,6 +349,9 @@ def main(args):
             
             k = 0
             for t in (obs1tuning1, obs1tuning2):
+                if t is None:
+                    continue
+                    
                 for p in data_products:
                     data[k, j*LFFT+chanOffset:(j+1)*LFFT] = t[p][jP,:]
                     k += 1
@@ -372,6 +387,9 @@ def main(args):
         
         ## Write the spectra to the PSRFITS files
         for j,sp,bz,bs,wt in zip(range(2), (bdata1, bdata2), (bzero1, bzero2), (bscale1, bscale2), (weight1, weight2)):
+            if j == 1 and obs1Tuning2 is None:
+                continue
+                
             ## Time
             pfu_out[j].sub.offs = (pfu_out[j].tot_rows)*pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt+pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt/2.0
             
