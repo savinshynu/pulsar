@@ -442,7 +442,7 @@ if __name__ == "__main__":
     parser.add_argument('-o', '--output', type=str, 
                         help='output file basename')
     parser.add_argument('-b', '--nsblk', type=aph.positive_int, default=32,
-￼                        help='number of spetra per sub-block')
+                        help='number of spetra per sub-block')
     parser.add_argument('-p', '--no-sk-flagging', action='store_true', 
                         help='disable on-the-fly SK flagging of RFI')
     parser.add_argument('-n', '--no-summing', action='store_true', 
