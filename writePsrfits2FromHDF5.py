@@ -54,6 +54,11 @@ def main(args):
     if len(fh.keys()) != 1 or 'Observation1' not in fh:
         raise RuntimeError('Only HDF5 waterfall files with a single observation, labeled "Observation1", are supported')
         
+    try:
+        station = fh.attrs['StationName']
+    except KeyError:
+        station = 'lwa1'
+        
     obs1 = fh['Observation1']
     if args.source is None:
         try:
@@ -251,9 +256,14 @@ def main(args):
         pfo.hdr.npol = nPols
         pfo.hdr.summed_polns = 1 if (not args.no_summing) else 0
         pfo.hdr.obs_mode = "SEARCH"
-        pfo.hdr.telescope = "OVRO-LWA"
-        pfo.hdr.frontend = "OVRO-LWA"
-        pfo.hdr.backend = "Beamformer"
+        if station == 'ovro-lwa':
+            pfo.hdr.telescope = "OVRO-LWA"
+            pfo.hdr.frontend = "OVRO-LWA"
+            pfo.hdr.backend = "Beamformer"
+        else:
+            pfo.hdr.telescope = "LWA"
+            pfo.hdr.frontend = "LWA"
+            pfo.hdr.backend = "DRSpectrometer"
         pfo.hdr.project_id = "Pulsar"
         pfo.hdr.ra_str = args.ra
         pfo.hdr.dec_str = args.dec
