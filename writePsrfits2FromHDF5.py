@@ -256,7 +256,7 @@ def main(args):
         pfo.hdr.npol = nPols
         pfo.hdr.summed_polns = 1 if (not args.no_summing) else 0
         pfo.hdr.obs_mode = "SEARCH"
-        if station in ('ovro-lwa', 'ovrolwa', 'ovro'):
+        if station in ('ovro-lwa', 'ovrolwa'):
             pfo.hdr.telescope = "OVRO-LWA"
             pfo.hdr.frontend = "OVRO-LWA"
             pfo.hdr.backend = "Beamformer"
