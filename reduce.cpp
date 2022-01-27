@@ -87,11 +87,13 @@ typedef void (*ReductionOp)(long, long, Complex32 const*, Complex32 const*, floa
 
 template<ReductionOp R>
 void reduce_engine(long nStand,
-	                 long nSamps,
+	                 long nChan,
+									 long nFFT,
 									 Complex32 const* data,
 									 float* reduced) {
   // Setup
-	int j;
+	long nSamps = nChan*nFFT;
+	int jk, j, k;
 	
 	Py_BEGIN_ALLOW_THREADS
 	
@@ -104,8 +106,11 @@ void reduce_engine(long nStand,
 		#ifdef _OPENMP
 			#pragma omp for schedule(OMP_SCHEDULER)
 		#endif
-		for(j=0; j<nSamps; j++) {
-			R(nStand, nSamps, (data+j), (data+nSamps+j), (reduced+j));
+		for(jk=0; jk<nSamps; jk++) {
+			j = jk / nFFT;
+			k = jk % nFFT;
+		  
+			R(nStand, nSamps, (data+nFFT*j+k), (data+nSamps+nFFT*j+k), (reduced+nChan*k+j));
 		}
 	}
 	
@@ -164,7 +169,7 @@ PyObject *CombineToIntensity(PyObject *self, PyObject *args, PyObject *kwds) {
 		}
 	}
 	
-	reduce_engine<Intensity>(nStand, nSamps,
+	reduce_engine<Intensity>(nStand, nChan, nFFT,
 		                       (Complex32*) PyArray_DATA(data),
 													 (float*) PyArray_DATA(dataF));
 	
@@ -245,7 +250,7 @@ PyObject *CombineToLinear(PyObject *self, PyObject *args, PyObject *kwds) {
 		}
 	}
 	
-	reduce_engine<Linear>(nStand, nSamps,
+	reduce_engine<Linear>(nStand, nChan, nFFT,
 		                    (Complex32*) PyArray_DATA(data),
 												(float*) PyArray_DATA(dataF));
 	
@@ -326,7 +331,7 @@ PyObject *CombineToCircular(PyObject *self, PyObject *args, PyObject *kwds) {
 		}
 	}
 	
-	reduce_engine<Circular>(nStand, nSamps,
+	reduce_engine<Circular>(nStand, nChan, nFFT,
 		                      (Complex32*) PyArray_DATA(data),
 													(float*) PyArray_DATA(dataF));
 	
@@ -407,7 +412,7 @@ PyObject *CombineToStokes(PyObject *self, PyObject *args, PyObject *kwds) {
 		}
 	}
 	
-	reduce_engine<Stokes>(nStand, nSamps,
+	reduce_engine<Stokes>(nStand, nChan, nFFT,
 		                    (Complex32*) PyArray_DATA(data),
 											  (float*) PyArray_DATA(dataF));
 	
