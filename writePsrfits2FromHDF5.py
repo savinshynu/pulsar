@@ -142,11 +142,11 @@ def main(args):
     
     ## Date
     try:
-        beginATime = AstroTime(obs1['time'][0]['int'], obs1['time']['frac'],
+        beginATime = AstroTime(obs1['time'][0]['int'], obs1['time'][0]['frac'],
                                format=obs1['time'].attrs['format'],
                                scale=obs1['time'].attrs['scale'])
     except (KeyError, ValueError):
-        beginAtime = AstroTime(obs1['time'][0], format='unix', scale='utc')
+        beginATime = AstroTime(obs1['time'][0], format='unix', scale='utc')
     beginDate = beginATime.utc.datetime
     beginTime = beginDate
     mjd = beginATime.utc.mjd

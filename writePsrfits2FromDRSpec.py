@@ -90,7 +90,7 @@ def main(args):
     nFramesFile -= int(round(o/tInt))
     
     # Sub-integration block size
-    nsblk = 32
+    nsblk = args.nsblk
     
     ## Date
     beginDate = idf.get_info('start_time')
@@ -321,6 +321,8 @@ if __name__ == "__main__":
                         help='skip the specified number of seconds at the beginning of the file')
     parser.add_argument('-o', '--output', type=str, 
                         help='output file basename')
+    parser.add_argument('-b', '--nsblk', type=aph.positive_int, default=32, 
+                        help='number of spetra per sub-block')
     parser.add_argument('-p', '--no-sk-flagging', action='store_true', 
                         help='disable on-the-fly SK flagging of RFI')
     parser.add_argument('-n', '--no-summing', action='store_true', 
