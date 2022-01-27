@@ -21,10 +21,10 @@
 
 
 void Linear(long nStand,
-	          long nSamps,
-	          Complex32 const *x,
-						Complex32 const *y,
-						float* out) {
+            long nSamps,
+            Complex32 const *x,
+            Complex32 const *y,
+            float* out) {
 	for(long i=0; i<nStand; i+=2) {
 		Complex32 aX, aY;
 		aX = *(x + i*nSamps);
@@ -36,10 +36,10 @@ void Linear(long nStand,
 
 
 void Intensity(long nStand,
-	             long nSamps,
-	             Complex32 const *x,
-						   Complex32 const *y,
-						   float* out) {
+               long nSamps,
+               Complex32 const *x,
+               Complex32 const *y,
+               float* out) {
 	for(long i=0; i<nStand; i+=2) {
 		Complex32 aX, aY;
 		aX = *(x + i*nSamps);
@@ -50,10 +50,10 @@ void Intensity(long nStand,
 
 
 void Circular(long nStand,
-	            long nSamps,
-	            Complex32 const *x,
-							Complex32 const *y,
-							float* out) {
+              long nSamps,
+              Complex32 const *x,
+              Complex32 const *y,
+              float* out) {
 	for(long i=0; i<nStand; i+=2) {
 		Complex32 aX, aYI;
 		aX = *(x + i*nSamps);
@@ -65,10 +65,10 @@ void Circular(long nStand,
 
 
 void Stokes(long nStand,
-	          long nSamps,
-	          Complex32 const *x,
-						Complex32 const *y,
-						float* out) {
+            long nSamps,
+            Complex32 const *x,
+            Complex32 const *y,
+            float* out) {
 	for(long i=0; i<nStand; i+=2) {
 		Complex32 aX, aY, aUV;
 		aX = *(x + i*nSamps);
