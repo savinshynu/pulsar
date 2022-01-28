@@ -5,8 +5,26 @@
 
 #include "py3_compat.h"
 
-// Dispersion constant in MHz^2 s / pc cm^-3
+/*
+ Complex types
+*/
+
+typedef std::complex<float> Complex32;
+typedef std::complex<double> Complex64;
+
+/*
+ Macro for 2*pi
+*/
+
+#define TPI (2*NPY_PI*Complex64(0,1))
+
+
+/*
+ Dispersion constant in MHz^2 s / pc cm^-3
+*/
+
 #define DCONST (double) 4.148808e3
+
 
 /* 
  Support Functions
@@ -19,8 +37,15 @@ extern PyObject *BindToCore(PyObject*, PyObject*, PyObject*);
 extern char BindToCore_doc[];
 extern PyObject *BindOpenMPToCores(PyObject*, PyObject*, PyObject*);
 extern char BindOpenMPToCores_doc[];
-double cabs2(double complex);
-float cabs2f(float complex);
+
+/*
+  Complex magnitude squared functions
+*/
+
+template<typename T>
+inline T abs2(std::complex<T> z) {
+	return z.real()*z.real() + z.imag()*z.imag();
+}
 
 
 /*

@@ -119,10 +119,10 @@ coreExtraLibs = openmpLibs
 coreExtraLibs.extend(fftwLibs)
 
 
-ExtensionModules = [Extension('_psr', ['psr.c', 'utils.c', 'fft.c', 'kurtosis.c', 'dedispersion.c', 'reduce.c', 'quantize.c'],
+ExtensionModules = [Extension('_psr', ['psr.cpp', 'utils.cpp', 'fft.cpp', 'kurtosis.cpp', 'dedispersion.cpp', 'reduce.cpp', 'quantize.cpp'],
                               include_dirs=[numpy.get_include()], libraries=['m'],
                               extra_compile_args=coreExtraFlags, extra_link_args=coreExtraLibs),
-                    Extension('_helper', ['helper.c',],
+                    Extension('_helper', ['helper.cpp',],
                               include_dirs=[numpy.get_include()], libraries=['m'],
                               extra_compile_args=coreExtraFlags, extra_link_args=coreExtraLibs)]
 
