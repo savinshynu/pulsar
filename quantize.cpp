@@ -130,7 +130,6 @@ PyObject *OptimizeDataLevels(PyObject *self, PyObject *args, PyObject *kwds) {
 	d = (uint8_t *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
-		omp_set_dynamic(0);
 		#pragma omp parallel default(shared) private(secStart, i, j, k, tempV, tempMin, tempMax)
 	#endif
 	{

@@ -65,7 +65,6 @@ PyObject *ComputeSKMask(PyObject *self, PyObject *args, PyObject *kwds) {
 	b = (float *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
-		omp_set_dynamic(0);
 		#pragma omp parallel default(shared) private(secStart, i, j, k, tempV, tempV2, temp2V)
 	#endif
 	{

@@ -99,7 +99,6 @@ void reduce_engine(long nStand,
 	
 	// Go!
 	#ifdef _OPENMP
-		omp_set_dynamic(0);
 		#pragma omp parallel default(shared) private(j)
 	#endif
 	{

@@ -65,7 +65,6 @@ void pulsar_engine(long nStand,
 	long secStart;
 	
 	#ifdef _OPENMP
-		omp_set_dynamic(0);
 		#pragma omp parallel default(shared) private(in, secStart, i, j, k)
 	#endif
 	{
@@ -424,7 +423,6 @@ PyObject *PhaseRotator(PyObject *self, PyObject *args, PyObject *kwds) {
 	d = (Complex32 *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
-		omp_set_dynamic(0);
 		#pragma omp parallel default(shared) private(secStart, i, j, k, tempF)
 	#endif
 	{

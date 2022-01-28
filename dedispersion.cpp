@@ -253,7 +253,6 @@ PyObject *MultiChannelCD(PyObject *self, PyObject *args, PyObject *kwds) {
 	dF = (Complex32 *) PyArray_DATA(dataF);
 	
 	#ifdef _OPENMP
-		omp_set_dynamic(0);
 		#pragma omp parallel default(shared) private(secStartX, secStartY, i, j, k, l, N, nSets, start, stop, cFreq, chirp, inX, inY)
 	#endif
 	{
