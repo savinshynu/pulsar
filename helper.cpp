@@ -1,8 +1,5 @@
 #include "Python.h"
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <complex.h>
+#include <cmath>
 
 #ifdef _OPENMP
 	#include <omp.h>
@@ -20,12 +17,12 @@
 
 static PyObject *FastAxis0MinMax(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *pulses, *pulsesF;
-	PyArrayObject *data, *dataF;
+	PyArrayObject *data=NULL, *dataF=NULL;
 	
 	long i, j, nSamps, nParams;
 	
-	static char *kwlist[] = {"pulses", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O", kwlist, &pulses)) {
+	char const* kwlist[] = {"pulses", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O", const_cast<char **>(kwlist), &pulses)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -111,12 +108,12 @@ Outputs:\n\
 
 static PyObject *FastHistogram(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *pulses, *edges, *pulsesF;
-	PyArrayObject *data, *bins, *dataF;
+	PyArrayObject *data=NULL, *bins=NULL, *dataF=NULL;
 	
 	long i, j, k, l, nSamps, nBins;
 	
-	static char *kwlist[] = {"pulses", "bins", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OO", kwlist, &pulses, &edges)) {
+	char const* kwlist[] = {"pulses", "bins", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "OO", const_cast<char **>(kwlist), &pulses, &edges)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -251,7 +248,7 @@ Outputs:\n\
 
 static PyObject *FastAxis0Mean(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *spectra, *spectraF;
-	PyArrayObject *data, *dataF;
+	PyArrayObject *data=NULL, *dataF=NULL;
 	
 	long i, j, k, jk, nStand, nSamps, nChans, iPrime;
 	
@@ -347,15 +344,15 @@ Outputs:\n\
 
 static PyObject *FastAxis1MinMax(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *spectra, *spectraF;
-	PyArrayObject *data, *dataF;
+	PyArrayObject *data=NULL, *dataF=NULL;
 	
 	long i, j, k, nStand, nSamps, nChans;
 	long int chanMin, chanMax;
 	chanMin = 0;
 	chanMax = -1;
 	
-	static char *kwlist[] = {"spectra", "chanMin", "chanMax", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|ll", kwlist, &spectra, &chanMin, &chanMax)) {
+	char const* kwlist[] = {"spectra", "chanMin", "chanMax", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "O|ll", const_cast<char **>(kwlist), &spectra, &chanMin, &chanMax)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}
@@ -448,7 +445,7 @@ Outputs:\n\
 
 static PyObject *FastAxis0Bandpass(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *spectra, *bandpass, *spectraF;
-	PyArrayObject *data, *dataB;
+	PyArrayObject *data=NULL, *dataB=NULL;
 	
 	long i, j, k, jk, nStand, nSamps, nChans;
 	
@@ -538,7 +535,7 @@ int cmpfloat(const void *a, const void *b) {
 
 static PyObject *FastAxis0Median(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *spectra, *spectraF;
-	PyArrayObject *data, *dataF;
+	PyArrayObject *data=NULL, *dataF=NULL;
 	
 	long i, j, k, nStand, nSamps, nChans, iPrime;
 	
@@ -644,7 +641,7 @@ Outputs:\n\
 
 static PyObject *FastAxis1Percentiles5And99(PyObject *self, PyObject *args, PyObject *kwds) {
 	PyObject *spectra, *spectraF;
-	PyArrayObject *data;
+	PyArrayObject *data=NULL;
 	
 	long i, j, k, nStand, nSamps, nChans, iPrime;
 	long int stand, chanMin, chanMax;
@@ -652,8 +649,8 @@ static PyObject *FastAxis1Percentiles5And99(PyObject *self, PyObject *args, PyOb
 	chanMin = 0;
 	chanMax = -1;
 	
-	static char *kwlist[] = {"spectra", "stand", "chanMin", "chanMax", NULL};
-	if(!PyArg_ParseTupleAndKeywords(args, kwds, "Ol|ll", kwlist, &spectra, &stand, &chanMin, &chanMax)) {
+	char const* kwlist[] = {"spectra", "stand", "chanMin", "chanMax", NULL};
+	if(!PyArg_ParseTupleAndKeywords(args, kwds, "Ol|ll", const_cast<char **>(kwlist), &spectra, &stand, &chanMin, &chanMax)) {
 		PyErr_Format(PyExc_RuntimeError, "Invalid parameters");
 		return NULL;
 	}

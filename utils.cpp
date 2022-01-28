@@ -1,9 +1,7 @@
 #include "Python.h"
-#include <math.h>
-#include <stdio.h>
-#include <complex.h>
+#include <cmath>
+#include <complex>
 #include <fftw3.h>
-#include <stdlib.h>
 #include <pthread.h>
 
 #ifdef _OPENMP
@@ -153,7 +151,7 @@ PyObject *BindOpenMPToCores(PyObject *self, PyObject *args, PyObject *kwds) {
 		return NULL;
 	}
 	
-	nthread = PyList_Size(cores);
+	nthread = (int) PyList_Size(cores);
 	ncore = getCoreCount();
 	if( ncore == -101 ) {
 		PyErr_Warn(PyExc_RuntimeWarning, "Changing of the thread core binding is not supported on this OS");
@@ -229,16 +227,3 @@ Input arguments are:\n\
 Outputs:\n\
   * True, if successful\n\
 ");
-
-
-/*
-  Complex magnitude squared functions
-*/
-
-double cabs2(double complex z) {
-	return creal(z)*creal(z) + cimag(z)*cimag(z);
-}
-
-float cabs2f(float complex z) {
-	return crealf(z)*crealf(z) + cimagf(z)*cimagf(z);
-}

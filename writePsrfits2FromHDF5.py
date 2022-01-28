@@ -54,6 +54,11 @@ def main(args):
     if len(fh.keys()) != 1 or 'Observation1' not in fh:
         raise RuntimeError('Only HDF5 waterfall files with a single observation, labeled "Observation1", are supported')
         
+    try:
+        station = fh.attrs['StationName']
+    except KeyError:
+        station = 'lwa1'
+        
     obs1 = fh['Observation1']
     if args.source is None:
         try:
@@ -115,7 +120,10 @@ def main(args):
     
     ## What's in the data?
     obs1tuning1 = obs1['Tuning1']
-    obs1tuning2 = obs1['Tuning2']
+    try:
+        obs1tuning2 = obs1['Tuning2']
+    except KeyError:
+        obs1tuning2 = None
     
     nFramesFile = obs1['time'].shape[0]
     srate = float(obs1.attrs['sampleRate'])
@@ -124,7 +132,10 @@ def main(args):
     nchan = int(obs1.attrs['nChan'])
     chanOffset = LFFT - nchan		# Packing offset to deal with old HDF5 files that contain only LFFT-1 channels
     central_freq1 = obs1tuning1['freq'][LFFT//2-chanOffset]
-    central_freq2 = obs1tuning2['freq'][LFFT//2-chanOffset]
+    try:
+        central_freq2 = obs1tuning2['freq'][LFFT//2-chanOffset]
+    except TypeError:
+        central_freq2 = 0.0
     data_products = list(obs1tuning1)
     data_products.sort()
     try:
@@ -138,15 +149,15 @@ def main(args):
     tInt = obs1.attrs['tInt']
     
     # Sub-integration block size
-    nsblk = 32
+    nsblk = args.nsblk
     
     ## Date
     try:
-        beginATime = AstroTime(obs1['time'][0]['int'], obs1['time']['frac'],
+        beginATime = AstroTime(obs1['time'][0]['int'], obs1['time'][0]['frac'],
                                format=obs1['time'].attrs['format'],
                                scale=obs1['time'].attrs['scale'])
     except (KeyError, ValueError):
-        beginAtime = AstroTime(obs1['time'][0], format='unix', scale='utc')
+        beginATime = AstroTime(obs1['time'][0], format='unix', scale='utc')
     beginDate = beginATime.utc.datetime
     beginTime = beginDate
     mjd = beginATime.utc.mjd
@@ -214,6 +225,9 @@ def main(args):
         OptimizeDataLevels = OptimizeDataLevels8Bit
         
     for t in range(1, 2+1):
+        if t == 2 and obs1tuning2 is None:
+            continue
+            
         ## Basic structure and bounds
         pfo = pfu.psrfits()
         pfo.basefilename = "%s_b%it%i" % (args.output, beam, t)
@@ -242,9 +256,14 @@ def main(args):
         pfo.hdr.npol = nPols
         pfo.hdr.summed_polns = 1 if (not args.no_summing) else 0
         pfo.hdr.obs_mode = "SEARCH"
-        pfo.hdr.telescope = "LWA"
-        pfo.hdr.frontend = "LWA"
-        pfo.hdr.backend = "DRSpectrometer"
+        if station in ('ovro-lwa', 'ovrolwa'):
+            pfo.hdr.telescope = "OVRO-LWA"
+            pfo.hdr.frontend = "OVRO-LWA"
+            pfo.hdr.backend = "Beamformer"
+        else:
+            pfo.hdr.telescope = "LWA"
+            pfo.hdr.frontend = "LWA"
+            pfo.hdr.backend = "DRSpectrometer"
         pfo.hdr.project_id = "Pulsar"
         pfo.hdr.ra_str = args.ra
         pfo.hdr.dec_str = args.dec
@@ -270,6 +289,9 @@ def main(args):
         pfu_out.append(pfo)
         
     for i,t in enumerate((obs1tuning1, obs1tuning2)):
+        if i == 1 and t is None:
+            continue
+            
         # Define the frequencies available in the file (in MHz) making sure to correct the array
         # if chanOffset is not zero
         tfreqs = numpy.zeros(LFFT, dtype=t['freq'].dtype)
@@ -337,6 +359,9 @@ def main(args):
             
             k = 0
             for t in (obs1tuning1, obs1tuning2):
+                if t is None:
+                    continue
+                    
                 for p in data_products:
                     data[k, j*LFFT+chanOffset:(j+1)*LFFT] = t[p][jP,:]
                     k += 1
@@ -372,6 +397,9 @@ def main(args):
         
         ## Write the spectra to the PSRFITS files
         for j,sp,bz,bs,wt in zip(range(2), (bdata1, bdata2), (bzero1, bzero2), (bscale1, bscale2), (weight1, weight2)):
+            if j == 1 and obs1tuning2 is None:
+                continue
+                
             ## Time
             pfu_out[j].sub.offs = (pfu_out[j].tot_rows)*pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt+pfu_out[j].hdr.nsblk*pfu_out[j].hdr.dt/2.0
             
@@ -423,6 +451,8 @@ if __name__ == "__main__":
                         help='skip the specified number of seconds at the beginning of the file')
     parser.add_argument('-o', '--output', type=str, 
                         help='output file basename')
+    parser.add_argument('-b', '--nsblk', type=aph.positive_int, default=32,
+                        help='number of spetra per sub-block')
     parser.add_argument('-p', '--no-sk-flagging', action='store_true', 
                         help='disable on-the-fly SK flagging of RFI')
     parser.add_argument('-n', '--no-summing', action='store_true', 
